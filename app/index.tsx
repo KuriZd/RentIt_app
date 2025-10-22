@@ -50,7 +50,7 @@ export default function AuthScreen() {
               <View className="gap-4">
                 <Button onPress={() => router.push("/auth/login")}>
                   <Text className="font-medium text-white dark:text-zinc-900 text-lg">
-                    Sign inn
+                    Sign in
                   </Text>
                 </Button>
                 <Button variant="outline" onPress={() => router.push("/auth/signup")}>
