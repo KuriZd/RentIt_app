@@ -23,10 +23,10 @@ const recommended = [
 
 export default function HomeScreen() {
   return (
-    <View className="flex-1">
+    <View className="flex-1 mt-10">
       <HeaderSearch />
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 24 }} >
         {/* Today selection */}
         <View className="px-5 pt-4">
           <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">

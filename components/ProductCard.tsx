@@ -1,15 +1,10 @@
 import { Link } from "expo-router";
 import { Image, Pressable, Text, View } from "react-native";
 
-export type Item = { id: string; title: string; price: number; per: string; image: string };
+type Item = { id: string; title: string; price: number; per: string; image: string };
 
-type Props = {
-  item: Item;
-  width?: number; 
-};
-
-export default function ProductCard({ item, width = 160 }: Props) {
-  const imageH = 120;
+export default function ProductCard({ item, width = 160 }: { item: Item; width?: number }) {
+  const imageH = width * 0.9; // más cuadrado (antes era más bajo)
   return (
     <Link href={{ pathname: "/item/[id]", params: { id: item.id } }} asChild>
       <Pressable style={{ width }}>
@@ -29,7 +24,10 @@ export default function ProductCard({ item, width = 160 }: Props) {
         </View>
 
         <View className="mt-2">
-          <Text numberOfLines={2} className="text-[13px] font-medium text-neutral-900 dark:text-neutral-100">
+          <Text
+            numberOfLines={2}
+            className="text-[13px] font-medium text-neutral-900 dark:text-neutral-100"
+          >
             {item.title}
           </Text>
           <Text className="text-[11px] text-neutral-600 dark:text-neutral-300 mt-1">
