@@ -98,7 +98,7 @@ export default function SignupScreen() {
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1,
-            justifyContent: "center", // centrado vertical en mobile
+            justifyContent: "center",
           }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"

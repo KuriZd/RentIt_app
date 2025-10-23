@@ -1,14 +1,14 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import Button from "../../components/ui/button";
 
@@ -34,9 +34,7 @@ export default function NewItemModal() {
 
     try {
       setLoading(true);
-      // TODO: aquí va tu inserción a Supabase (tabla: items)
-      // const { data, error } = await supabase.from("items").insert({ title, price: priceNum, period, category, desc });
-      // if (error) throw error;
+      // TODO: aquí va tu inserción a Supabase (tabla: items) ALEXIS
 
       Alert.alert("Publicado", "Tu artículo se publicó correctamente.");
       router.back();

@@ -5,15 +5,15 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-    Alert,
-    Image,
-    Platform,
-    Pressable,
-    ScrollView,
-    Switch,
-    Text,
-    View,
-    useColorScheme,
+  Alert,
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  Switch,
+  Text,
+  View,
+  useColorScheme,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import BottomNav from "../../components/BottomNav";
@@ -105,7 +105,6 @@ export default function SettingsScreen() {
     setHapticsEnabled(value);
     await AsyncStorage.setItem("hapticsEnabled", String(value));
     if (value) {
-      // vibración suave solo al activar
       try {
         await Haptics.selectionAsync();
       } catch {}

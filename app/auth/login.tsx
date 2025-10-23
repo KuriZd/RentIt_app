@@ -93,7 +93,7 @@ export default function LoginScreen() {
     })();
   }, []);
 
-  // OAuth handler (reutilizado por OAuthButton)
+  // OAuth handler
   const handleOAuth = async (provider: Provider) => {
     const { data, error } = await supabase.auth.signInWithOAuth({ provider });
     if (error) {

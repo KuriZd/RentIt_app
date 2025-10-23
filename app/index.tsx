@@ -11,7 +11,7 @@ import { supabase } from "../utils/supabase";
 export default function AuthScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const showHero = width >= 768; // md+
+  const showHero = width >= 768;
 
   const handleOAuth = async (provider: Provider) => {
     const { data, error } = await supabase.auth.signInWithOAuth({ provider });
@@ -27,14 +27,14 @@ export default function AuthScreen() {
       <ScrollView
         contentContainerStyle={{
           flexGrow: 1,
-          justifyContent: "center", // centra verticalmente en mobile
+          justifyContent: "center",
         }}
         className="min-h-screen"
       >
         <View
           className={[
             "mx-auto w-full max-w-6xl px-5",
-            showHero ? "py-16" : "py-24", // más aire en mobile
+            showHero ? "py-16" : "py-24",
           ].join(" ")}
         >
           <View

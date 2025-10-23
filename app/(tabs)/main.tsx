@@ -1,6 +1,6 @@
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
-import BottomNav from "../../components/BottomNav"; // ✅ Importamos nuestro BottomNav
+import BottomNav from "../../components/BottomNav";
 import HeaderSearch from "../../components/HeaderSearch";
 import ProductCarousel from "../../components/ProductCarousel";
 
@@ -35,7 +35,7 @@ export default function HomeScreen() {
       {/* Contenido desplazable */}
       <ScrollView
         contentContainerStyle={{
-          paddingBottom: 80, // deja espacio para la barra inferior
+          paddingBottom: 80, 
         }}
         showsVerticalScrollIndicator={false}
       >
