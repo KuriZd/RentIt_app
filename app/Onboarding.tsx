@@ -1,3 +1,4 @@
+// app/Onboarding.tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
