@@ -64,12 +64,12 @@ export default function LoginScreen() {
     supabase.auth
       .getSession()
       .then(({ data: { session } }) => {
-        if (session) router.replace("/(tabs)");
+        if (session) router.replace("/main");
       })
       .finally(() => setSessionLoading(false));
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) router.replace("/(tabs)");
+      if (session) router.replace("/main");
     });
     return () => listener.subscription.unsubscribe();
   }, []);
