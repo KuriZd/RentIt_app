@@ -1,3 +1,4 @@
+// app/index.tsx
 import type { Provider } from "@supabase/supabase-js";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
