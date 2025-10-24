@@ -69,22 +69,50 @@ export default function SignupScreen() {
   };
 
   const onSubmit = async () => {
-    setSubmitted(true);
-    if (!canSubmit) return;
-    try {
-      setLoading(true);
-      const { error } = await supabase.auth.signUp({ email, password: pw });
-      if (error) {
-        Alert.alert("Error al registrar", error.message);
-        return;
-      }
-      Alert.alert("¡Éxito!", "Revisa tu correo para verificar tu cuenta.", [
-        { text: "OK", onPress: () => router.replace("/auth/login") },
-      ]);
-    } finally {
-      setLoading(false);
+  if (!canSubmit || loading) return;
+
+  setSubmitted(true);
+  setLoading(true);
+
+  try {
+    // Intento de registro
+    const { error } = await supabase.auth.signUp({ email, password: pw });
+
+    if (error) {
+      let msg = "Ocurrió un error al registrarte. Inténtalo de nuevo.";
+
+      if (error.message.includes("already registered"))
+        msg = "Este correo ya está registrado. Inicia sesión o usa otro.";
+      else if (error.message.includes("Password"))
+        msg = "La contraseña no cumple los requisitos mínimos.";
+
+      Alert.alert("No se pudo completar el registro", msg);
+      return;
     }
-  };
+    // Simular retardo para mejor UX
+    await new Promise((r) => setTimeout(r, 500));
+
+    Alert.alert(
+      "🎉 ¡Registro exitoso!",
+      "Revisa tu correo electrónico para verificar tu cuenta antes de iniciar sesión.",
+      [
+        {
+          text: "Ir al inicio de sesión",
+          onPress: () => router.replace("/auth/login"),
+        },
+      ]
+    );
+  } catch (err) {
+    console.error(err);
+    Alert.alert(
+      "Error inesperado",
+      "Parece que hubo un problema con la conexión. Inténtalo más tarde."
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const keyboardOffset = Platform.select({ ios: 100, android: 80 });
 
@@ -99,7 +127,7 @@ export default function SignupScreen() {
         <ScrollView
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }} // centrado mobile
+          contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
           className="min-h-screen"
         >
           <View className={["mx-auto w-full max-w-6xl px-5", showHero ? "py-16" : "py-24"].join(" ")}>
