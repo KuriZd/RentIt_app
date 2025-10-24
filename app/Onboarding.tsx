@@ -8,19 +8,19 @@ const slides = [
   {
     key: "rentit-welcome",
     title: "Bienvenido a RentIt",
-    text: "Renta o publica artículos cerca de ti de forma sencilla.",
+    text: "Vende, renta y publica artículos ¡al instante! Todo cerca de ti y sin complicaciones.",
     img: require("../assets/onboarding/welcome.png"),
   },
   {
     key: "rentit-publish",
     title: "Publica en minutos",
-    text: "Sube fotos, define precio y disponibilidad.",
+    text: "Muestra tu artículo, establece el precio y marca cuándo está libre. ¡Tu anuncio está listo!",
     img: require("../assets/onboarding/publish.png"),
   },
   {
     key: "rentit-explore",
     title: "Explora y encuentra",
-    text: "Busca por categoría, compara y elige lo que necesitas.",
+    text: "Tu compra ideal, simplificada: Navega por categorías, compara precios rápidamente y toma la mejor decisión.",
     img: require("../assets/onboarding/explore.png"),
   },
 ];
@@ -47,8 +47,8 @@ export default function Onboarding() {
           contentFit="contain"
           transition={200}
         />
-        <Text className="text-2xl font-bold text-zinc-900 text-center mt-6">{title}</Text>
-        <Text className="text-base text-zinc-600 text-center mt-3 leading-6">{text}</Text>
+        <Text className="text-5xl font-bold text-zinc-900 text-center mt-6">{title}</Text>
+        <Text className="text-3xl text-zinc-600 text-justify max-w-[90%] font mt-10 leading-10">{text}</Text>
       </View>
 
       <View className="w-full">
