@@ -219,11 +219,6 @@ export default function SettingsScreen() {
               className="mb-3 h-16 w-16 rounded-full"
             />
             {/* ring sutil según tema */}
-            <View
-              className="absolute -inset-[2px] rounded-full"
-              style={{ borderWidth: 2, borderColor: COLORS.ring }}
-              pointerEvents="none"
-            />
           </View>
           <Text className="text-2xl font-semibold text-zinc-800 dark:text-zinc-100">
             Monsterrat Herrera
