@@ -15,7 +15,10 @@ import {
   View,
   useColorScheme,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { supabase } from "../../utils/supabase";
 
 /* ---------------- Item tipo botón ---------------- */
@@ -45,7 +48,7 @@ function SettingItem({ icon, label, onPress, danger }: SettingItemProps) {
       ].join(" ")}
       style={
         Platform.OS === "android"
-          ? { elevation: 0 } // borde manda en dark, sin sombra
+          ? { elevation: 0 }
           : {
               shadowOpacity: 0.05,
               shadowRadius: 8,
@@ -69,7 +72,7 @@ function SettingItem({ icon, label, onPress, danger }: SettingItemProps) {
       <Feather
         name="chevron-right"
         size={20}
-        color={danger ? "#dc2626" : undefined /* se ajusta en el padre */}
+        color={danger ? "#dc2626" : undefined}
       />
     </Pressable>
   );
@@ -143,14 +146,13 @@ function SettingSwitch({
 export default function SettingsScreen() {
   const router = useRouter();
   const scheme = useColorScheme();
+  const insets = useSafeAreaInsets();
   const isDark = scheme === "dark";
 
   const COLORS = useMemo(
     () => ({
-      bg: isDark ? "#0b0b0c" : "#f9fafb", // zinc-50 en claro, near-black en dark
-      icon: isDark ? "#e5e7eb" : "#111827", // textos/íconos principales
-      chevron: isDark ? "#9ca3af" : "#6b7280", // secundaria
-      accent: "#2563eb",
+      bg: isDark ? "#0b0b0c" : "#f9fafb",
+      icon: isDark ? "#e5e7eb" : "#111827",
       ring: isDark ? "#3f3f46" : "#e5e7eb",
     }),
     [isDark]
@@ -158,7 +160,6 @@ export default function SettingsScreen() {
 
   const [hapticsEnabled, setHapticsEnabled] = useState<boolean>(false);
 
-  // cargar preferencia
   useEffect(() => {
     AsyncStorage.getItem("hapticsEnabled").then((val) => {
       if (val !== null) setHapticsEnabled(val === "true");
@@ -185,7 +186,6 @@ export default function SettingsScreen() {
           text: "Eliminar",
           style: "destructive",
           onPress: async () => {
-            // TODO: Llamar tu endpoint real de borrado de cuenta
             Alert.alert("Cuenta eliminada", "Tu cuenta ha sido eliminada.");
           },
         },
@@ -204,21 +204,40 @@ export default function SettingsScreen() {
   }, [router]);
 
   return (
-    <SafeAreaView className="flex-1" style={{ backgroundColor: COLORS.bg }}>
+    <SafeAreaView
+      className="flex-1"
+      // ✅ usa el fondo aquí y quita mt/pt “manual” en el contenido
+      style={{ backgroundColor: COLORS.bg }}
+      edges={["top", "bottom"]} // asegura safe area en iOS (y no dupliques padding)
+    >
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 24 }}
+        // ✅ dejamos el padding horizontal y vertical base
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingBottom: 24 + Math.max(insets.bottom, 0),
+          paddingTop: 12 + Math.max(insets.top, 0), // usa safe area real; evita mt-20
+        }}
+        // ✅ en iOS que ajuste automáticamente contra el notch
+        contentInsetAdjustmentBehavior={
+          Platform.OS === "ios" ? "automatic" : undefined
+        }
       >
         {/* Header */}
-        <View className="mt-20 mb-8 flex-row items-center gap-4">
+        <View className="mb-8 flex-row items-center gap-4">
           <View className="relative">
             <Image
               source={{
                 uri: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=764&auto=format&fit=crop&ixlib=rb-4.1.0",
               }}
               accessibilityLabel="User avatar"
-              className="mb-3 h-16 w-16 rounded-full"
+              className="h-16 w-16 rounded-full"
             />
-            {/* ring sutil según tema */}
+            {/* ring sutil */}
+            <View
+              className="absolute -inset-[2px] rounded-full"
+              style={{ borderWidth: 2, borderColor: COLORS.ring }}
+              pointerEvents="none"
+            />
           </View>
           <Text className="text-2xl font-semibold text-zinc-800 dark:text-zinc-100">
             Monsterrat Herrera
@@ -273,11 +292,6 @@ export default function SettingsScreen() {
           label="Log out"
           onPress={handleLogout}
         />
-
-        {/* Chevron de todos los items a color de tema */}
-        <View className="h-0">
-          {/* Este View vacío es solo para “usar” COLORS.chevron y evitar tree-shake en plataformas */}
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
