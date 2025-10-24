@@ -26,7 +26,7 @@ type Props = {
 
 /** 🔹 Rutas reales */
 export const DEFAULT_NAV_ITEMS: NavItem[] = [
-  { key: "profile",   label: "Profile",   icon: "user",  href: "/profile"    as const },
+  { key: "profile",   label: "Profile",   icon: "user",  href: "/myprofile"    as const },
   { key: "favorites", label: "Favorites", icon: "heart", href: "/favorites" as const },
   { key: "home",      label: "Home",      icon: "home",  href: "/main"           as const },
   { key: "tickets",   label: "Tickets",   icon: "tag",   href: "/tickets"    as const },
