@@ -2,7 +2,14 @@
 import { Feather } from "@expo/vector-icons";
 import { usePathname, useRouter, type Href } from "expo-router";
 import React from "react";
-import { Platform, Pressable, Text, useColorScheme, View, ViewStyle } from "react-native";
+import {
+  Platform,
+  Pressable,
+  Text,
+  useColorScheme,
+  View,
+  ViewStyle,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type FeatherIconName = keyof typeof Feather.glyphMap;
@@ -26,11 +33,26 @@ type Props = {
 
 /** 🔹 Rutas reales */
 export const DEFAULT_NAV_ITEMS: NavItem[] = [
-  { key: "profile",   label: "Profile",   icon: "user",  href: "/profile"    as const },
-  { key: "favorites", label: "Favorites", icon: "heart", href: "/favorites" as const },
-  { key: "home",      label: "Home",      icon: "home",  href: "/main"           as const },
-  { key: "tickets",   label: "Tickets",   icon: "tag",   href: "/tickets"    as const },
-  { key: "settings",  label: "Settings",  icon: "settings", href: "/settings" as const },
+  {
+    key: "profile",
+    label: "Profile",
+    icon: "user",
+    href: "/myprofile" as const,
+  },
+  {
+    key: "favorites",
+    label: "Favorites",
+    icon: "heart",
+    href: "/favorites" as const,
+  },
+  { key: "home", label: "Home", icon: "home", href: "/main" as const },
+  { key: "tickets", label: "Tickets", icon: "tag", href: "/tickets" as const },
+  {
+    key: "settings",
+    label: "Settings",
+    icon: "settings",
+    href: "/settings" as const,
+  },
 ];
 
 export default function BottomNav({
@@ -48,7 +70,8 @@ export default function BottomNav({
   const theme = useColorScheme();
 
   const items = DEFAULT_NAV_ITEMS.filter((i) => !hideRoutes.includes(i.key));
-  const hrefToString = (href?: Href) => (typeof href === "string" ? href : href?.pathname ?? "");
+  const hrefToString = (href?: Href) =>
+    typeof href === "string" ? href : (href?.pathname ?? "");
 
   const isDark = theme === "dark";
   const bgColor = isDark ? "#09090b" : "#ffffff";
@@ -74,7 +97,9 @@ export default function BottomNav({
       <View className="mx-4 flex-row items-center justify-between">
         {items.map((it) => {
           const hrefStr = hrefToString(it.href);
-          const isActive = matchSubroutes ? pathname.startsWith(hrefStr) : pathname === hrefStr;
+          const isActive = matchSubroutes
+            ? pathname.startsWith(hrefStr)
+            : pathname === hrefStr;
 
           const color = isActive ? activeColor : iconInactive;
           const textColor = isActive ? activeColor : textInactive;
@@ -97,7 +122,10 @@ export default function BottomNav({
               <Feather name={it.icon} size={22} color={color} />
               <Text
                 className="mt-1 text-[11px]"
-                style={{ color: textColor, fontWeight: isActive ? "600" : "400" }}
+                style={{
+                  color: textColor,
+                  fontWeight: isActive ? "600" : "400",
+                }}
                 numberOfLines={1}
               >
                 {it.label}

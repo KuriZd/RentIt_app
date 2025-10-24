@@ -26,14 +26,16 @@ export default function SignupScreen() {
   const { width } = useWindowDimensions();
   const showHero = width >= 768; // md+
 
-  const [email, setEmail] = useState("");
-  const [pw, setPw] = useState("");
-  const [pw2, setPw2] = useState("");
-  const [showPw, setShowPw] = useState(false);
-  const [showPw2, setShowPw2] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  // form
+  const [email, setEmail] = useState<string>("");
+  const [pw, setPw] = useState<string>("");
+  const [pw2, setPw2] = useState<string>("");
+  const [showPw, setShowPw] = useState<boolean>(false);
+  const [showPw2, setShowPw2] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [submitted, setSubmitted] = useState<boolean>(false);
 
+  // validations
   const hasMinLen = pw.length >= 8;
   const hasUpper = /[A-Z]/.test(pw);
   const hasSymbol = /\W/.test(pw);
@@ -43,7 +45,6 @@ export default function SignupScreen() {
     submitted && email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
       ? "Correo inválido"
       : "";
-
   const matchError =
     submitted && pw2 && !pwMatch ? "Las contraseñas no coinciden" : "";
 
@@ -96,15 +97,12 @@ export default function SignupScreen() {
         keyboardVerticalOffset={keyboardOffset}
       >
         <ScrollView
-          contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: "center",
-          }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }} // centrado mobile
           className="min-h-screen"
         >
-          <View className={[ "mx-auto w-full max-w-6xl px-5", showHero ? "py-16" : "py-24" ].join(" ")} style={{ transform: [{ translateY: -30 }] }}>
+          <View className={["mx-auto w-full max-w-6xl px-5", showHero ? "py-16" : "py-24"].join(" ")}>
             <View className="flex items-center justify-center flex-col-reverse md:grid md:grid-cols-2 gap-10">
               <AuthCard
                 title="Crea tu cuenta"
@@ -131,6 +129,7 @@ export default function SignupScreen() {
                       onChangeText={setEmail}
                       keyboardType="email-address"
                       autoCapitalize="none"
+                      autoComplete="email"
                     />
                   </View>
                   {!!emailError && <Text className="mt-1 text-sm text-red-600">{emailError}</Text>}
@@ -151,6 +150,7 @@ export default function SignupScreen() {
                       onChangeText={setPw}
                       secureTextEntry={!showPw}
                       autoCapitalize="none"
+                      autoComplete="password-new"
                     />
                     <Pressable onPress={() => setShowPw((s) => !s)}>
                       <Feather name={showPw ? "eye-off" : "eye"} size={20} color="#71717A" />
@@ -197,23 +197,18 @@ export default function SignupScreen() {
                       onChangeText={setPw2}
                       secureTextEntry={!showPw2}
                       autoCapitalize="none"
+                      autoComplete="password-new"
                     />
                     <Pressable onPress={() => setShowPw2((s) => !s)}>
                       <Feather name={showPw2 ? "eye-off" : "eye"} size={20} color="#71717A" />
                     </Pressable>
                   </View>
-                  {submitted && matchError && (
-                    <Text className="mt-1 text-sm text-red-600">{matchError}</Text>
-                  )}
+                  {submitted && matchError && <Text className="mt-1 text-sm text-red-600">{matchError}</Text>}
                 </View>
 
                 {/* Submit */}
                 <View className="mt-4">
-                  <Button
-                    onPress={onSubmit}
-                    className={!canSubmit ? "opacity-60" : ""}
-                    disabled={!canSubmit}
-                  >
+                  <Button onPress={onSubmit} className={!canSubmit ? "opacity-70" : ""} disabled={!canSubmit}>
                     <Text className="font-medium text-white dark:text-zinc-900 text-lg">
                       {loading ? "Registrando..." : "Sign up"}
                     </Text>

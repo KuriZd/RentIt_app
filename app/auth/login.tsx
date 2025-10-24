@@ -3,7 +3,7 @@ import { AntDesign, Feather } from "@expo/vector-icons";
 import type { Provider } from "@supabase/supabase-js";
 import { BlurView } from "expo-blur";
 import Checkbox from "expo-checkbox";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -21,7 +21,13 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { AuthCard, Button, HeroPanel, OAuthButton, Separator } from "../../components";
+import {
+  AuthCard,
+  Button,
+  HeroPanel,
+  OAuthButton,
+  Separator,
+} from "../../components";
 import "../../global.css";
 import { supabase } from "../../utils/supabase";
 
@@ -44,7 +50,11 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState<boolean>(false);
 
   // error messages
-  const [errors, setErrors] = useState<{ email: string; pw: string; general: string }>({
+  const [errors, setErrors] = useState<{
+    email: string;
+    pw: string;
+    general: string;
+  }>({
     email: "",
     pw: "",
     general: "",
@@ -54,10 +64,17 @@ export default function LoginScreen() {
   const spinAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.loop(
-      Animated.timing(spinAnim, { toValue: 1, duration: 800, useNativeDriver: true })
+      Animated.timing(spinAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      })
     ).start();
   }, [spinAnim]);
-  const spin = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+  const spin = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
 
   // session check & listener
   useEffect(() => {
@@ -68,9 +85,11 @@ export default function LoginScreen() {
       })
       .finally(() => setSessionLoading(false));
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) router.replace("/main");
-    });
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (session) router.replace("/main");
+      }
+    );
     return () => listener.subscription.unsubscribe();
   }, []);
 
@@ -124,7 +143,10 @@ export default function LoginScreen() {
     if (hasError) return;
 
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: pw,
+    });
     if (error) {
       setErrors({ ...newErr, general: error.message });
       setLoading(false);
@@ -158,7 +180,12 @@ export default function LoginScreen() {
           contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }} // centrado en mobile
           className="min-h-screen"
         >
-          <View className={["mx-auto w-full max-w-6xl px-5", showHero ? "py-16" : "py-24"].join(" ")}>
+          <View
+            className={[
+              "mx-auto w-full max-w-6xl px-5",
+              showHero ? "py-16" : "py-24",
+            ].join(" ")}
+          >
             <View className="flex items-center justify-center flex-col-reverse md:grid md:grid-cols-2 gap-10">
               <AuthCard
                 title="Welcome back"
@@ -185,7 +212,12 @@ export default function LoginScreen() {
                       "bg-white dark:bg-zinc-900",
                     ].join(" ")}
                   >
-                    <AntDesign name="mail" size={18} color="#71717A" style={{ marginRight: 10 }} />
+                    <AntDesign
+                      name="mail"
+                      size={18}
+                      color="#71717A"
+                      style={{ marginRight: 10 }}
+                    />
                     <TextInput
                       className="flex-1 text-base text-zinc-900 dark:text-white"
                       placeholder="you@example.com"
@@ -197,7 +229,11 @@ export default function LoginScreen() {
                       autoComplete="email"
                     />
                   </View>
-                  {!!errors.email && <Text className="mt-1 text-sm text-red-600">{errors.email}</Text>}
+                  {!!errors.email && (
+                    <Text className="mt-1 text-sm text-red-600">
+                      {errors.email}
+                    </Text>
+                  )}
                 </View>
 
                 {/* Password */}
@@ -206,7 +242,12 @@ export default function LoginScreen() {
                     Password
                   </Text>
                   <View className="h-12 w-full flex-row items-center rounded-xl px-4 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900">
-                    <Feather name="lock" size={18} color="#71717A" style={{ marginRight: 10 }} />
+                    <Feather
+                      name="lock"
+                      size={18}
+                      color="#71717A"
+                      style={{ marginRight: 10 }}
+                    />
                     <TextInput
                       className="flex-1 text-base text-zinc-900 dark:text-white"
                       placeholder="••••••••"
@@ -218,10 +259,18 @@ export default function LoginScreen() {
                       autoComplete="password"
                     />
                     <Pressable onPress={() => setShowPw((s) => !s)}>
-                      <Feather name={showPw ? "eye-off" : "eye"} size={18} color="#71717A" />
+                      <Feather
+                        name={showPw ? "eye-off" : "eye"}
+                        size={18}
+                        color="#71717A"
+                      />
                     </Pressable>
                   </View>
-                  {!!errors.pw && <Text className="mt-1 text-sm text-red-600">{errors.pw}</Text>}
+                  {!!errors.pw && (
+                    <Text className="mt-1 text-sm text-red-600">
+                      {errors.pw}
+                    </Text>
+                  )}
                 </View>
 
                 {/* Remember / Forgot */}
@@ -232,17 +281,25 @@ export default function LoginScreen() {
                       onValueChange={setRemember}
                       color={remember ? "#000" : undefined}
                     />
-                    <Text className="text-sm text-zinc-700 dark:text-zinc-300">Remember me</Text>
-                  </View>
-                  <Pressable onPress={() => Alert.alert("Forgot password", "Flujo no implementado")}>
-                    <Text className="text-sm font-semibold text-zinc-900 dark:text-white">
-                      Forgot password?
+                    <Text className="text-sm text-zinc-700 dark:text-zinc-300">
+                      Remember me
                     </Text>
-                  </Pressable>
+                  </View>
+                  <Link href="/auth/forgot" asChild>
+                    <Pressable className="active:opacity-70">
+                      <Text className="text-sm font-semibold text-zinc-900 dark:text-white">
+                        Forgot password?
+                      </Text>
+                    </Pressable>
+                  </Link>
                 </View>
 
                 {/* Sign in */}
-                <Button onPress={onLogin} className={loading ? "opacity-70" : ""} disabled={loading}>
+                <Button
+                  onPress={onLogin}
+                  className={loading ? "opacity-70" : ""}
+                  disabled={loading}
+                >
                   <Text className="font-medium text-white dark:text-zinc-900 text-lg">
                     {loading ? "Signing in..." : "Sign in"}
                   </Text>
@@ -252,15 +309,26 @@ export default function LoginScreen() {
 
                 {/* OAuth */}
                 <View className="gap-3">
-                  <OAuthButton label="Continuar con Google" provider="google" onPress={handleOAuth} />
-                  <OAuthButton label="Continuar con Apple" provider="apple" onPress={handleOAuth} />
+                  <OAuthButton
+                    label="Continuar con Google"
+                    provider="google"
+                    onPress={handleOAuth}
+                  />
+                  <OAuthButton
+                    label="Continuar con Apple"
+                    provider="apple"
+                    onPress={handleOAuth}
+                  />
                 </View>
 
                 {/* Footer */}
                 <View className="mt-8">
                   <Text className="text-center text-base text-zinc-700 dark:text-zinc-300">
                     Don’t have an account?{" "}
-                    <Text className="font-bold" onPress={() => router.push("/auth/signup")}>
+                    <Text
+                      className="font-bold"
+                      onPress={() => router.push("/auth/signup")}
+                    >
                       Sign up
                     </Text>
                   </Text>

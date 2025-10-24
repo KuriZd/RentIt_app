@@ -17,8 +17,8 @@ export default function TabLayout() {
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <SafeAreaView className="flex-1 bg-gradient-to-b from-zinc-50 to-white dark:from-[#0b0b0c] dark:to-[#0f1115]">
         <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="main" />
+          <Stack.Screen name="editprofile" />
+          <Stack.Screen name="myprofile" />
         </Stack>
         <StatusBar style="auto" />
         <BottomNav safe />
