@@ -28,7 +28,7 @@ export default function HeaderSearch({
   onCategoriesPress,
 }: Props) {
   return (
-    <View className="px-5 pt-4 pb-3 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
+    <View className="px-5 pt-4 pb-3 bg-white dark:bg-transparent border-b border-neutral-200 dark:border-neutral-800">
       {/* Search pill */}
       <Pressable
         {...ripple}
