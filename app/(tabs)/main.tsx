@@ -28,10 +28,11 @@ const recommended = [
 
 export default function HomeScreen() {
   return (
+    
     <View className="flex-1 bg-white dark:bg-black">
       {/* Header superior */}
       <HeaderSearch />
-
+      
       {/* Contenido desplazable */}
       <ScrollView
         contentContainerStyle={{
