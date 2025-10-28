@@ -171,8 +171,8 @@ export default function NotificationsScreen() {
     <SafeAreaView className="flex-1" style={{ backgroundColor: COLORS.bg }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
         {/* Header */}
-        <View className="px-5 pt-10">
-          <Text className="text-4xl font-bold" style={{ color: COLORS.text }}>
+        <View className="px-5 pt-3">
+          <Text className="text-4xl font-bold ml-12" style={{ color: COLORS.text }}>
             Notifications
           </Text>
           <Text

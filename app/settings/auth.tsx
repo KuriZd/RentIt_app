@@ -43,7 +43,7 @@ export default function AuthSettingsScreen() {
         <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
           {/* Title */}
           <View className="pt-2 mb-4">
-            <Text className="text-[28px] font-bold text-neutral-900 dark:text-neutral-100">Authentication</Text>
+            <Text className="text-[28px] font-bold text-neutral-900 dark:text-neutral-100 ml-12">Authentication</Text>
           </View>
 
           {/* Intro / Help text */}
