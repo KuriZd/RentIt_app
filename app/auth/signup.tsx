@@ -4,18 +4,7 @@ import type { Provider } from "@supabase/supabase-js";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  Text,
-  TextInput,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AuthCard, Button, HeroPanel, OAuthButton, Separator } from "../../components";
 import "../../global.css";
@@ -39,13 +28,9 @@ export default function SignupScreen() {
   const hasSymbol = /\W/.test(pw);
   const pwMatch = pw2 === pw;
 
-  const emailError =
-    submitted && email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-      ? "Correo inválido"
-      : "";
+  const emailError = submitted && email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "Correo inválido" : "";
 
-  const matchError =
-    submitted && pw2 && !pwMatch ? "Las contraseñas no coinciden" : "";
+  const matchError = submitted && pw2 && !pwMatch ? "Las contraseñas no coinciden" : "";
 
   const canSubmit = useMemo(
     () => Boolean(email) && hasMinLen && hasUpper && hasSymbol && pwMatch && !loading,
@@ -77,9 +62,7 @@ export default function SignupScreen() {
         Alert.alert("Error al registrar", error.message);
         return;
       }
-      Alert.alert("¡Éxito!", "Revisa tu correo para verificar tu cuenta.", [
-        { text: "OK", onPress: () => router.replace("/auth/login") },
-      ]);
+      Alert.alert("¡Éxito!", "Revisa tu correo para verificar tu cuenta.", [{ text: "OK", onPress: () => router.replace("/auth/login") }]);
     } finally {
       setLoading(false);
     }
@@ -90,11 +73,7 @@ export default function SignupScreen() {
   return (
     <SafeAreaView className="flex-1 bg-gradient-to-b from-zinc-50 to-white dark:from-[#0b0b0c] dark:to-[#0f1115]">
       <StatusBar barStyle="dark-content" />
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={keyboardOffset}
-      >
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={keyboardOffset}>
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1,
@@ -104,17 +83,12 @@ export default function SignupScreen() {
           keyboardDismissMode="on-drag"
           className="min-h-screen"
         >
-          <View className={[ "mx-auto w-full max-w-6xl px-5", showHero ? "py-16" : "py-24" ].join(" ")} style={{ transform: [{ translateY: -30 }] }}>
+          <View className={["mx-auto w-full max-w-6xl px-5", showHero ? "py-16" : "py-24"].join(" ")} style={{ transform: [{ translateY: -30 }] }}>
             <View className="flex items-center justify-center flex-col-reverse md:grid md:grid-cols-2 gap-10">
-              <AuthCard
-                title="Crea tu cuenta"
-                subtitle="Regístrate para empezar a organizar tus finanzas y convertir tus metas en hábitos."
-              >
+              <AuthCard title="Crea tu cuenta" subtitle="Regístrate para empezar a organizar tus finanzas y convertir tus metas en hábitos.">
                 {/* Email */}
                 <View className="mb-4">
-                  <Text className="mb-2 text-base font-medium text-zinc-700 dark:text-zinc-300">
-                    Correo electrónico
-                  </Text>
+                  <Text className="mb-2 text-base font-medium text-zinc-700 dark:text-zinc-300">Correo electrónico</Text>
                   <View
                     className={[
                       "h-14 w-full flex-row items-center rounded-xl px-4",
@@ -138,9 +112,7 @@ export default function SignupScreen() {
 
                 {/* Password */}
                 <View className="mb-4">
-                  <Text className="mb-2 text-base font-medium text-zinc-700 dark:text-zinc-300">
-                    Contraseña
-                  </Text>
+                  <Text className="mb-2 text-base font-medium text-zinc-700 dark:text-zinc-300">Contraseña</Text>
                   <View className="h-14 w-full flex-row items-center rounded-xl px-4 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900">
                     <Feather name="lock" size={20} color="#71717A" style={{ marginRight: 12 }} />
                     <TextInput
@@ -164,11 +136,7 @@ export default function SignupScreen() {
                     {requirements.map(({ key, label, valid }) => (
                       <View key={key} className="flex-row items-center" style={{ gap: 10 }}>
                         <View className={`h-5 w-5 rounded-full ${valid ? "bg-emerald-500" : "bg-red-500"}`} />
-                        <Text
-                          className={`text-sm ${
-                            valid ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"
-                          }`}
-                        >
+                        <Text className={`text-sm ${valid ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
                           {label}
                         </Text>
                       </View>
@@ -178,9 +146,7 @@ export default function SignupScreen() {
 
                 {/* Confirm Password */}
                 <View className="mb-2">
-                  <Text className="mb-2 text-base font-medium text-zinc-700 dark:text-zinc-300">
-                    Repetir contraseña
-                  </Text>
+                  <Text className="mb-2 text-base font-medium text-zinc-700 dark:text-zinc-300">Repetir contraseña</Text>
                   <View
                     className={[
                       "h-14 w-full flex-row items-center rounded-xl px-4",
@@ -202,21 +168,13 @@ export default function SignupScreen() {
                       <Feather name={showPw2 ? "eye-off" : "eye"} size={20} color="#71717A" />
                     </Pressable>
                   </View>
-                  {submitted && matchError && (
-                    <Text className="mt-1 text-sm text-red-600">{matchError}</Text>
-                  )}
+                  {submitted && matchError && <Text className="mt-1 text-sm text-red-600">{matchError}</Text>}
                 </View>
 
                 {/* Submit */}
                 <View className="mt-4">
-                  <Button
-                    onPress={onSubmit}
-                    className={!canSubmit ? "opacity-60" : ""}
-                    disabled={!canSubmit}
-                  >
-                    <Text className="font-medium text-white dark:text-zinc-900 text-lg">
-                      {loading ? "Registrando..." : "Sign up"}
-                    </Text>
+                  <Button onPress={onSubmit} className={!canSubmit ? "opacity-60" : ""} disabled={!canSubmit}>
+                    <Text className="font-medium text-white dark:text-zinc-900 text-lg">{loading ? "Registrando..." : "Sign up"}</Text>
                   </Button>
                 </View>
 
