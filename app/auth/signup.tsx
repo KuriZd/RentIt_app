@@ -15,21 +15,22 @@ export default function SignupScreen() {
   const { width } = useWindowDimensions();
   const showHero = width >= 768; // md+
 
-  const [email, setEmail] = useState("");
-  const [pw, setPw] = useState("");
-  const [pw2, setPw2] = useState("");
-  const [showPw, setShowPw] = useState(false);
-  const [showPw2, setShowPw2] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  // form
+  const [email, setEmail] = useState<string>("");
+  const [pw, setPw] = useState<string>("");
+  const [pw2, setPw2] = useState<string>("");
+  const [showPw, setShowPw] = useState<boolean>(false);
+  const [showPw2, setShowPw2] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [submitted, setSubmitted] = useState<boolean>(false);
 
+  // validations
   const hasMinLen = pw.length >= 8;
   const hasUpper = /[A-Z]/.test(pw);
   const hasSymbol = /\W/.test(pw);
   const pwMatch = pw2 === pw;
 
   const emailError = submitted && email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "Correo inválido" : "";
-
   const matchError = submitted && pw2 && !pwMatch ? "Las contraseñas no coinciden" : "";
 
   const canSubmit = useMemo(
@@ -53,16 +54,36 @@ export default function SignupScreen() {
   };
 
   const onSubmit = async () => {
+    if (!canSubmit || loading) return;
+
     setSubmitted(true);
-    if (!canSubmit) return;
+    setLoading(true);
+
     try {
-      setLoading(true);
+      // Intento de registro
       const { error } = await supabase.auth.signUp({ email, password: pw });
+
       if (error) {
-        Alert.alert("Error al registrar", error.message);
+        let msg = "Ocurrió un error al registrarte. Inténtalo de nuevo.";
+
+        if (error.message.includes("already registered")) msg = "Este correo ya está registrado. Inicia sesión o usa otro.";
+        else if (error.message.includes("Password")) msg = "La contraseña no cumple los requisitos mínimos.";
+
+        Alert.alert("No se pudo completar el registro", msg);
         return;
       }
-      Alert.alert("¡Éxito!", "Revisa tu correo para verificar tu cuenta.", [{ text: "OK", onPress: () => router.replace("/auth/login") }]);
+      // Simular retardo para mejor UX
+      await new Promise((r) => setTimeout(r, 500));
+
+      Alert.alert("🎉 ¡Registro exitoso!", "Revisa tu correo electrónico para verificar tu cuenta antes de iniciar sesión.", [
+        {
+          text: "Ir al inicio de sesión",
+          onPress: () => router.replace("/auth/login"),
+        },
+      ]);
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error inesperado", "Parece que hubo un problema con la conexión. Inténtalo más tarde.");
     } finally {
       setLoading(false);
     }
@@ -75,15 +96,12 @@ export default function SignupScreen() {
       <StatusBar barStyle="dark-content" />
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={keyboardOffset}>
         <ScrollView
-          contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: "center",
-          }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
           className="min-h-screen"
         >
-          <View className={["mx-auto w-full max-w-6xl px-5", showHero ? "py-16" : "py-24"].join(" ")} style={{ transform: [{ translateY: -30 }] }}>
+          <View className={["mx-auto w-full max-w-6xl px-5", showHero ? "py-16" : "py-24"].join(" ")}>
             <View className="flex items-center justify-center flex-col-reverse md:grid md:grid-cols-2 gap-10">
               <AuthCard title="Crea tu cuenta" subtitle="Regístrate para empezar a organizar tus finanzas y convertir tus metas en hábitos.">
                 {/* Email */}
@@ -105,6 +123,7 @@ export default function SignupScreen() {
                       onChangeText={setEmail}
                       keyboardType="email-address"
                       autoCapitalize="none"
+                      autoComplete="email"
                     />
                   </View>
                   {!!emailError && <Text className="mt-1 text-sm text-red-600">{emailError}</Text>}
@@ -123,6 +142,7 @@ export default function SignupScreen() {
                       onChangeText={setPw}
                       secureTextEntry={!showPw}
                       autoCapitalize="none"
+                      autoComplete="password-new"
                     />
                     <Pressable onPress={() => setShowPw((s) => !s)}>
                       <Feather name={showPw ? "eye-off" : "eye"} size={20} color="#71717A" />
@@ -163,6 +183,7 @@ export default function SignupScreen() {
                       onChangeText={setPw2}
                       secureTextEntry={!showPw2}
                       autoCapitalize="none"
+                      autoComplete="password-new"
                     />
                     <Pressable onPress={() => setShowPw2((s) => !s)}>
                       <Feather name={showPw2 ? "eye-off" : "eye"} size={20} color="#71717A" />
@@ -173,7 +194,7 @@ export default function SignupScreen() {
 
                 {/* Submit */}
                 <View className="mt-4">
-                  <Button onPress={onSubmit} className={!canSubmit ? "opacity-60" : ""} disabled={!canSubmit}>
+                  <Button onPress={onSubmit} className={!canSubmit ? "opacity-70" : ""} disabled={!canSubmit}>
                     <Text className="font-medium text-white dark:text-zinc-900 text-lg">{loading ? "Registrando..." : "Sign up"}</Text>
                   </Button>
                 </View>
