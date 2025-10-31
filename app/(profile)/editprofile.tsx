@@ -1,8 +1,10 @@
 // app/profile/edit.tsx
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Modal,
@@ -15,6 +17,7 @@ import {
   useColorScheme,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { supabase } from "../../utils/supabase";
 
 /* ---------------- Tipos ---------------- */
 type SelectItem = { label: string; value: string };
@@ -42,7 +45,13 @@ type FieldProps = {
 };
 
 /* ---------------- Select con Modal y paleta COLORS ---------------- */
-function Select({ label, value, placeholder = "Select…", items, onChange }: SelectProps) {
+function Select({
+  label,
+  value,
+  placeholder = "Select…",
+  items,
+  onChange,
+}: SelectProps) {
   const [open, setOpen] = useState(false);
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
@@ -64,7 +73,12 @@ function Select({ label, value, placeholder = "Select…", items, onChange }: Se
   );
 
   const shadow = Platform.select({
-    ios: { shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+    ios: {
+      shadowColor: "#000",
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 4 },
+    },
     android: { elevation: 2 },
     default: {},
   });
@@ -72,7 +86,9 @@ function Select({ label, value, placeholder = "Select…", items, onChange }: Se
   return (
     <View className="mb-4">
       {!!label && (
-        <Text className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">{label}</Text>
+        <Text className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          {label}
+        </Text>
       )}
 
       <Pressable
@@ -80,27 +96,45 @@ function Select({ label, value, placeholder = "Select…", items, onChange }: Se
         onPress={() => setOpen(true)}
         accessibilityRole="button"
         accessibilityLabel={label || "Abrir selector"}
-        style={{ backgroundColor: COLORS.inputBg, borderColor: COLORS.ring, borderWidth: 1 }}
+        style={{
+          backgroundColor: COLORS.inputBg,
+          borderColor: COLORS.ring,
+          borderWidth: 1,
+        }}
       >
         <Text
           className="text-base"
           style={{ color: value ? COLORS.text : COLORS.iconMuted }}
         >
-          {value ? (items.find((i) => i.value === value)?.label ?? value) : placeholder}
+          {value
+            ? (items.find((i) => i.value === value)?.label ?? value)
+            : placeholder}
         </Text>
         <Feather name="chevron-down" size={18} color={COLORS.iconMuted} />
       </Pressable>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOpen(false)}
+      >
         {/* overlay */}
-        <Pressable className="flex-1" onPress={() => setOpen(false)} style={{ backgroundColor: COLORS.overlay }} />
+        <Pressable
+          className="flex-1"
+          onPress={() => setOpen(false)}
+          style={{ backgroundColor: COLORS.overlay }}
+        />
         {/* card */}
         <View
           className="absolute left-4 right-4 top-1/4 rounded-2xl p-3"
           style={[{ backgroundColor: COLORS.card }, shadow]}
         >
           <View className="mb-2 flex-row items-center justify-between">
-            <Text className="text-base font-semibold" style={{ color: COLORS.text }}>
+            <Text
+              className="text-base font-semibold"
+              style={{ color: COLORS.text }}
+            >
               {label || "Select"}
             </Text>
             <Pressable className="p-2 -mr-2" onPress={() => setOpen(false)}>
@@ -111,7 +145,9 @@ function Select({ label, value, placeholder = "Select…", items, onChange }: Se
           <FlatList
             data={items}
             keyExtractor={(it, idx) => String(it?.value ?? idx)}
-            ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: COLORS.divider }} />}
+            ItemSeparatorComponent={() => (
+              <View style={{ height: 1, backgroundColor: COLORS.divider }} />
+            )}
             style={{ maxHeight: 320 }}
             renderItem={({ item }) => {
               const selected = value === item.value;
@@ -128,7 +164,10 @@ function Select({ label, value, placeholder = "Select…", items, onChange }: Se
                 >
                   <Text
                     className="text-base"
-                    style={{ color: selected ? "#2563eb" : COLORS.text, fontWeight: selected ? "600" : "400" }}
+                    style={{
+                      color: selected ? "#2563eb" : COLORS.text,
+                      fontWeight: selected ? "600" : "400",
+                    }}
                   >
                     {item.label}
                   </Text>
@@ -143,7 +182,13 @@ function Select({ label, value, placeholder = "Select…", items, onChange }: Se
 }
 
 /* ---------------- Input reutilizable (usa COLORS) ---------------- */
-function Field({ label, placeholder, value, onChangeText, keyboardType = "default" }: FieldProps) {
+function Field({
+  label,
+  placeholder,
+  value,
+  onChangeText,
+  keyboardType = "default",
+}: FieldProps) {
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
   const COLORS = useMemo(
@@ -159,7 +204,9 @@ function Field({ label, placeholder, value, onChangeText, keyboardType = "defaul
   return (
     <View className="mb-4">
       {!!label && (
-        <Text className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">{label}</Text>
+        <Text className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          {label}
+        </Text>
       )}
       <TextInput
         className="h-12 rounded-xl px-3 text-base"
@@ -169,7 +216,12 @@ function Field({ label, placeholder, value, onChangeText, keyboardType = "defaul
         onChangeText={onChangeText}
         keyboardType={keyboardType}
         autoCapitalize="none"
-        style={{ backgroundColor: COLORS.inputBg, borderColor: COLORS.ring, borderWidth: 1, color: COLORS.text }}
+        style={{
+          backgroundColor: COLORS.inputBg,
+          borderColor: COLORS.ring,
+          borderWidth: 1,
+          color: COLORS.text,
+        }}
       />
     </View>
   );
@@ -187,6 +239,7 @@ export default function ProfileEditScreen() {
       subtext: isDark ? "#a1a1aa" : "#52525b",
       ring: isDark ? "#3f3f46" : "#e5e7eb",
       dashed: isDark ? "#3f3f46" : "#d4d4d8",
+      overlay: "rgba(0,0,0,0.35)",
     }),
     [isDark]
   );
@@ -205,8 +258,9 @@ export default function ProfileEditScreen() {
   const [town, setTown] = useState("");
   const [township, setTownship] = useState("");
   const [phone, setPhone] = useState("");
-  const [stature, setStature] = useState("");
-  const [weight, setWeight] = useState("");
+  const [marital, setMarital] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   // Fecha de nacimiento
   const now = new Date();
@@ -219,13 +273,28 @@ export default function ProfileEditScreen() {
   }, []);
   const months = useMemo<SelectItem[]>(
     () =>
-      ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map(
-        (m, i) => ({ label: m, value: String(i + 1).padStart(2, "0") })
-      ),
+      [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ].map((m, i) => ({ label: m, value: String(i + 1).padStart(2, "0") })),
     []
   );
   const days = useMemo<SelectItem[]>(
-    () => Array.from({ length: 31 }, (_, i) => ({ label: String(i + 1), value: String(i + 1).padStart(2, "0") })),
+    () =>
+      Array.from({ length: 31 }, (_, i) => ({
+        label: String(i + 1),
+        value: String(i + 1).padStart(2, "0"),
+      })),
     []
   );
   const [dDay, setDDay] = useState("");
@@ -239,47 +308,158 @@ export default function ProfileEditScreen() {
     { label: "Viudo(a)", value: "widowed" },
     { label: "Unión libre", value: "cohabiting" },
   ];
-  const [marital, setMarital] = useState("");
 
   // Helpers
   const onlyDigits = (s: string) => s.replace(/[^\d]/g, "");
 
-  function onSave() {
+  /* ============ CARGA INICIAL DESDE SUPABASE (tabla 'perfiles') ============ */
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      try {
+        setLoading(true);
+        const { data: s } = await supabase.auth.getSession();
+        const user = s.session?.user;
+        if (!user) {
+          router.replace("/auth/login");
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("perfiles")
+          .select(
+            "nombre, curp, estado_civil, email, fecha_nacimiento, direccion"
+          )
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (error) throw error;
+        if (!alive) return;
+
+        if (data) {
+          setFullname((data as any).nombre ?? "");
+          setCurp(((data as any).curp ?? "").toUpperCase());
+          setEmail(((data as any).email ?? "").toLowerCase());
+          setMarital((data as any).estado_civil ?? "");
+
+          // fecha_nacimiento => YYYY-MM-DD
+          const bd: string | null = (data as any).fecha_nacimiento ?? null;
+          if (bd && /^\d{4}-\d{2}-\d{2}$/.test(bd)) {
+            const [y, m, d] = bd.split("-");
+            setDYear(y);
+            setDMonth(m);
+            setDDay(d);
+          }
+
+          const dir = (data as any).direccion ?? {};
+          setStreet(dir.calle ?? "");
+          setColonia(dir.colonia ?? "");
+          setZip(dir.cp ?? "");
+          setTown(dir.municipio ?? "");
+          setTownship(dir.estado ?? "");
+          setPhone(dir.telefono ?? "");
+        }
+      } catch (e: any) {
+        console.error(e);
+        Alert.alert(
+          "No se pudo cargar tu perfil",
+          e?.message ?? "Intenta de nuevo."
+        );
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      alive = false;
+    };
+  }, [router]);
+
+  /* ======================= GUARDAR EN SUPABASE ======================= */
+  async function onSave() {
     const errs: string[] = [];
     if (!fullname.trim()) errs.push("Nombre completo");
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.push("Email válido");
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      errs.push("Email válido");
     if (zip && zip.length < 4) errs.push("CP válido");
     if (phone && onlyDigits(phone).length < 7) errs.push("Teléfono válido");
 
     if (errs.length) {
-      console.log("Errores:", errs.join(", "));
+      Alert.alert("Revisa los campos", errs.join(", "));
       return;
     }
 
+    const { data: s } = await supabase.auth.getSession();
+    const user = s.session?.user;
+    if (!user) {
+      Alert.alert("Sesión expirada", "Vuelve a iniciar sesión.");
+      router.replace("/auth/login");
+      return;
+    }
+
+    const birthdate =
+      dYear && dMonth && dDay ? `${dYear}-${dMonth}-${dDay}` : null;
+
     const payload = {
-      fullname: fullname.trim(),
-      curp: curp.trim().toUpperCase(),
-      email: email.trim().toLowerCase(),
-      street,
-      colonia,
-      zip: onlyDigits(zip),
-      town,
-      township,
-      phone: onlyDigits(phone),
-      stature: onlyDigits(stature),
-      weight: onlyDigits(weight),
-      marital,
-      birthdate: dYear && dMonth && dDay ? `${dYear}-${dMonth}-${dDay}` : null,
+      id: user.id,
+      nombre: fullname.trim(),
+      curp: curp.trim().toUpperCase() || null,
+      estado_civil: marital || null,
+      email: email.trim().toLowerCase() || null,
+      fecha_nacimiento: birthdate, // date o null
+      direccion: {
+        calle: street || null,
+        colonia: colonia || null,
+        cp: zip || null,
+        municipio: town || null,
+        estado: township || null,
+        telefono: onlyDigits(phone) || null,
+      },
     };
-    console.log("SAVE:", payload);
-    // POST a tu API...
+
+    try {
+      setSaving(true);
+      // upsert: crea si no existe, actualiza si existe
+      const { error } = await supabase
+        .from("perfiles")
+        .upsert(payload, { onConflict: "id" })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      Alert.alert("Guardado", "Tu perfil se actualizó correctamente.");
+      router.back();
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert("No se pudo guardar", e?.message ?? "Inténtalo más tarde.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-white dark:bg-black">
+        <ActivityIndicator
+          size="large"
+          color={scheme === "dark" ? "#E5E7EB" : "#000"}
+        />
+      </SafeAreaView>
+    );
   }
 
   return (
     <SafeAreaView className="flex-1 bg-white dark:bg-black">
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16, paddingBottom: 140 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingVertical: 16,
+          paddingBottom: 140,
+        }}
       >
         {/* Header con back */}
         <View className="mb-4 flex-row items-center">
@@ -290,7 +470,10 @@ export default function ProfileEditScreen() {
           >
             <Feather name="arrow-left" size={24} color={COLORS.text} />
           </Pressable>
-          <Text className="text-3xl font-bold tracking-tight" style={{ color: COLORS.text }}>
+          <Text
+            className="text-3xl font-bold tracking-tight"
+            style={{ color: COLORS.text }}
+          >
             My Information
           </Text>
         </View>
@@ -309,52 +492,125 @@ export default function ProfileEditScreen() {
         </View>
 
         {/* Campos */}
-        <Field label="Full name" placeholder="Nombre completo" value={fullname} onChangeText={setFullname} />
-        <Field label="CURP" placeholder="LOVA031223MMNMRLA1" value={curp} onChangeText={(t) => setCurp(t.toUpperCase())} />
+        <Field
+          label="Full name"
+          placeholder="Nombre completo"
+          value={fullname}
+          onChangeText={setFullname}
+        />
+        <Field
+          label="CURP"
+          placeholder="LOVA031223MMNMRLA1"
+          value={curp}
+          onChangeText={(t) => setCurp(t.toUpperCase())}
+        />
 
         {/* Fecha de nacimiento */}
-        <Text className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">Date of birth</Text>
+        <Text className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          Date of birth
+        </Text>
         <View className="mb-4 flex-row items-center gap-3">
           <View className="flex-1">
-            <Select value={dDay} items={days} onChange={setDDay} placeholder="DD" />
+            <Select
+              value={dDay}
+              items={days}
+              onChange={setDDay}
+              placeholder="DD"
+            />
           </View>
           <View className="flex-[1.2]">
-            <Select value={dMonth} items={months} onChange={setDMonth} placeholder="MM" />
+            <Select
+              value={dMonth}
+              items={months}
+              onChange={setDMonth}
+              placeholder="MM"
+            />
           </View>
           <View className="flex-[1.1]">
-            <Select value={dYear} items={years} onChange={setDYear} placeholder="YYYY" />
+            <Select
+              value={dYear}
+              items={years}
+              onChange={setDYear}
+              placeholder="YYYY"
+            />
           </View>
         </View>
 
-        <Select label="Marital status" value={marital} items={maritalOptions} onChange={setMarital} placeholder="Selecciona estado civil" />
+        <Select
+          label="Marital status"
+          value={marital}
+          items={maritalOptions}
+          onChange={setMarital}
+          placeholder="Selecciona estado civil"
+        />
 
-        <Field label="Email address" placeholder="correo@ejemplo.com" value={email} onChangeText={setEmail} keyboardType="email-address" />
-        <Field label="Calle y número" placeholder="Paseo del Ebano No.282" value={street} onChangeText={setStreet} />
-        <Field label="Colonia" placeholder="Prados Verdes" value={colonia} onChangeText={setColonia} />
-        <Field label="Zip code" placeholder="58110" value={zip} onChangeText={(t) => setZip(onlyDigits(t))} keyboardType="number-pad" />
-        <Field label="Town" placeholder="Morelia" value={town} onChangeText={setTown} />
-        <Field label="Township" placeholder="Morelia" value={township} onChangeText={setTownship} />
-        <Field label="Phone number" placeholder="443 422 7564" value={phone} onChangeText={(t) => setPhone(onlyDigits(t))} keyboardType="phone-pad" />
-
-        {/* Estatura y Peso */}
-        <View className="flex-row gap-3">
-          <View className="flex-1">
-            <Field label="Stature" placeholder="170 (cm)" value={stature} onChangeText={(t) => setStature(onlyDigits(t))} keyboardType="numeric" />
-          </View>
-          <View className="flex-1">
-            <Field label="Weight" placeholder="70 (kg)" value={weight} onChangeText={(t) => setWeight(onlyDigits(t))} keyboardType="numeric" />
-          </View>
-        </View>
+        <Field
+          label="Email address"
+          placeholder="correo@ejemplo.com"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+        />
+        <Field
+          label="Calle y número"
+          placeholder="Paseo del Ebano No.282"
+          value={street}
+          onChangeText={setStreet}
+        />
+        <Field
+          label="Colonia"
+          placeholder="Prados Verdes"
+          value={colonia}
+          onChangeText={setColonia}
+        />
+        <Field
+          label="Zip code"
+          placeholder="58110"
+          value={zip}
+          onChangeText={(t) => setZip(onlyDigits(t))}
+          keyboardType="number-pad"
+        />
+        <Field
+          label="Town (Municipio)"
+          placeholder="Morelia"
+          value={town}
+          onChangeText={setTown}
+        />
+        <Field
+          label="State (Estado)"
+          placeholder="Michoacán"
+          value={township}
+          onChangeText={setTownship}
+        />
+        <Field
+          label="Phone number"
+          placeholder="443 422 7564"
+          value={phone}
+          onChangeText={(t) => setPhone(onlyDigits(t))}
+          keyboardType="phone-pad"
+        />
 
         {/* Guardar */}
         <Pressable
           className="mt-2 h-12 items-center justify-center rounded-xl active:opacity-90"
           onPress={onSave}
-          style={{ backgroundColor: "#1677C3" }}
+          disabled={saving}
+          style={{ backgroundColor: "#1677C3", opacity: saving ? 0.7 : 1 }}
         >
-          <Text className="text-base font-semibold text-white">SAVE</Text>
+          <Text className="text-base font-semibold text-white">
+            {saving ? "GUARDANDO..." : "SAVE"}
+          </Text>
         </Pressable>
       </ScrollView>
+
+      {saving && (
+        <View
+          className="absolute inset-0 items-center justify-center"
+          style={{ backgroundColor: COLORS.overlay }}
+        >
+          <ActivityIndicator size="large" />
+        </View>
+      )}
     </SafeAreaView>
   );
 }
