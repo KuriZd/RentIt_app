@@ -177,15 +177,15 @@ export default function EditProfileScreen() {
       >
         {/* Header */}
         <View className="mb-6 flex-row items-center">
-          <Pressable
+          {/* <Pressable
             onPress={() => router.back()}
             className="mr-4 rounded-full p-2 active:bg-zinc-100 dark:active:bg-zinc-800"
             accessibilityLabel="Atrás"
           >
             <Feather name="arrow-left" size={24} color={backIconColor} />
-          </Pressable>
-          <Text className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-            Mi Información
+          </Pressable> */}
+          <Text className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+            Perfil
           </Text>
         </View>
 
