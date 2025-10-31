@@ -15,11 +15,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../utils/supabase";
 
-/* ---------------- Tipos auxiliares ---------------- */
+/* ---------------- Tipos ---------------- */
 type Address = {
   street?: string | null;
   neighborhood?: string | null;
-  postal_code?: string | null;
+  postalCode?: string | null;
   city?: string | null;
   state?: string | null;
   phone?: string | null;
@@ -33,26 +33,14 @@ type Profile = {
   marital?: string | null;
   email?: string | null;
   medicalId?: string | null;
-  address: {
-    street?: string | null;
-    neighborhood?: string | null;
-    postalCode?: string | null;
-    city?: string | null;
-    state?: string | null;
-    phone?: string | null;
-  };
+  address: Address;
 };
 
-type SectionCardProps = {
-  children: React.ReactNode;
-  onEdit?: () => void;
-};
-
+/* ---------------- UI helpers ---------------- */
+type SectionCardProps = { children: React.ReactNode; onEdit?: () => void };
 function SectionCard({ children, onEdit }: SectionCardProps) {
   const scheme = useColorScheme();
-  const iconColor =
-    scheme === "dark" ? "#E5E7EB" /* zinc-200 */ : "#111827"; /* gray-900 */
-
+  const iconColor = scheme === "dark" ? "#E5E7EB" : "#111827";
   return (
     <View className="relative mb-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-md dark:border-zinc-800 dark:bg-zinc-900">
       {onEdit && (
@@ -88,62 +76,73 @@ export default function EditProfileScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // carga de perfil
+  // Carga de perfil desde 'perfiles'
   useEffect(() => {
-    let isMounted = true;
+    let alive = true;
 
     async function loadProfile() {
       try {
         setLoading(true);
-        const { data: sessionRes } = await supabase.auth.getSession();
-        const session = sessionRes.session;
-        if (!session?.user) {
+
+        const { data: s } = await supabase.auth.getSession();
+        const user = s.session?.user;
+        if (!user) {
           router.replace("/auth/login");
           return;
         }
-        const userId = session.user.id;
 
+        // ⚠️ Consulta a la tabla 'perfiles'
+        // columnas ejemplo: id (uuid FK a auth.users), nombre, avatar_url, curp, genero, estado_civil,
+        // email, numero_medico, direccion (jsonb con { calle, colonia, cp, municipio, estado, telefono })
         const { data, error } = await supabase
-          .from("profiles")
+          .from("perfiles")
           .select(
-            "full_name, avatar_url, curp, gender, marital, email, medical_id, address:address(street, neighborhood, postal_code, city, state, phone)"
+            "nombre, avatar_url, curp, genero, estado_civil, email, numero_medico, direccion"
           )
-          .eq("id", userId)
-          .single();
+          .eq("id", user.id)
+          .maybeSingle();
 
-        if (error) {
-          console.error(error);
-          Alert.alert("Error", "No se pudo cargar tu perfil.");
+        if (error) throw error;
+
+        if (!alive) return;
+
+        if (!data) {
+          // No existe fila para este usuario
+          setProfile(null);
           return;
         }
-        if (!isMounted) return;
 
-        const addr: Address | null = (data as any)?.address ?? null;
-        setProfile({
-          name: (data as any)?.full_name ?? null,
-          avatar: (data as any)?.avatar_url ?? null,
-          curp: (data as any)?.curp ?? null,
-          gender: (data as any)?.gender ?? null,
-          marital: (data as any)?.marital ?? null,
-          email: (data as any)?.email ?? null,
-          medicalId: (data as any)?.medical_id ?? null,
+        const dir = (data as any).direccion ?? {};
+        const p: Profile = {
+          name: (data as any).nombre ?? null,
+          avatar: (data as any).avatar_url ?? null,
+          curp: (data as any).curp ?? null,
+          gender: (data as any).genero ?? null,
+          marital: (data as any).estado_civil ?? null,
+          email: (data as any).email ?? null,
+          medicalId: (data as any).numero_medico ?? null,
           address: {
-            street: addr?.street ?? null,
-            neighborhood: addr?.neighborhood ?? null,
-            postalCode: addr?.postal_code ?? null,
-            city: addr?.city ?? null,
-            state: addr?.state ?? null,
-            phone: addr?.phone ?? null,
+            street: dir.calle ?? null,
+            neighborhood: dir.colonia ?? null,
+            postalCode: dir.cp ?? null,
+            city: dir.municipio ?? null,
+            state: dir.estado ?? null,
+            phone: dir.telefono ?? null,
           },
-        });
+        };
+
+        setProfile(p);
+      } catch (e: any) {
+        console.error(e);
+        Alert.alert("Error", e?.message ?? "No se pudo cargar tu perfil.");
       } finally {
-        if (isMounted) setLoading(false);
+        if (alive) setLoading(false);
       }
     }
 
     loadProfile();
     return () => {
-      isMounted = false;
+      alive = false;
     };
   }, [router]);
 
@@ -176,28 +175,27 @@ export default function EditProfileScreen() {
         keyboardShouldPersistTaps="handled"
         className="flex-1"
       >
-        {/* Header con flecha */}
+        {/* Header */}
         <View className="mb-6 flex-row items-center">
-          <Pressable
+          {/* <Pressable
             onPress={() => router.back()}
             className="mr-4 rounded-full p-2 active:bg-zinc-100 dark:active:bg-zinc-800"
             accessibilityLabel="Atrás"
           >
             <Feather name="arrow-left" size={24} color={backIconColor} />
-          </Pressable>
-          <Text className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-            Mi Información
+          </Pressable> */}
+          <Text className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+            Perfil
           </Text>
         </View>
 
-        {/* Card datos personales */}
+        {/* Datos personales */}
         <SectionCard onEdit={() => router.push("/editprofile" as const)}>
           <View className="mb-6 items-center">
             <Image
               source={{ uri: avatarUri }}
               className="h-48 w-48 rounded-full"
             />
-            {/* anillo sutil según tema */}
             <View className="mt-3 h-1 w-24 rounded-full bg-zinc-200 dark:bg-zinc-700" />
           </View>
           <Field label="Name" value={user?.name} />
@@ -208,7 +206,7 @@ export default function EditProfileScreen() {
           <Field label="N° de servicio médico" value={user?.medicalId} />
         </SectionCard>
 
-        {/* Card dirección */}
+        {/* Dirección */}
         <SectionCard onEdit={() => router.push("/" as const)}>
           <Field label="Calle y número" value={user?.address.street} />
           <Field label="Colonia" value={user?.address.neighborhood} />
@@ -218,7 +216,7 @@ export default function EditProfileScreen() {
           <Field label="Teléfono" value={user?.address.phone} />
         </SectionCard>
 
-        {/* Empty/placeholder si no hay datos */}
+        {/* Placeholder */}
         {!user && (
           <View className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
             <Text className="text-zinc-700 dark:text-zinc-300">

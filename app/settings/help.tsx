@@ -53,12 +53,12 @@ export default function HelpScreen() {
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }}
       >
         {/* Header */}
-        <View className="py-10 mb-4">
-          <Text className="text-4xl font-bold text-neutral-900 dark:text-neutral-100">
+        <View className="pt-3 mb-4">
+          <Text className="text-4xl font-bold text-neutral-900 dark:text-neutral-100 ml-12">
             {selected ? "Help Detail" : "Help"}
           </Text>
           {!selected && (
-            <Text className="mt-2 text-xl leading-6 text-neutral-600 dark:text-neutral-400">
+            <Text className="mt-6 text-xl leading-6 text-neutral-600 dark:text-neutral-400">
               Select a topic to learn more or resolve your issue.
             </Text>
           )}
