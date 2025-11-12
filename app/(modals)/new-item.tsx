@@ -83,7 +83,10 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
   const pickImages = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permiso requerido", "Concede permiso para acceder a tus fotos.");
+      Alert.alert(
+        "Permiso requerido",
+        "Concede permiso para acceder a tus fotos."
+      );
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -111,19 +114,24 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
       images.map(async (img, i) => {
         const res = await fetch(img.uri);
         const ab = await res.arrayBuffer();
-        const contentType = img.mimeType && img.mimeType !== "" ? img.mimeType : "image/jpeg";
+        const contentType =
+          img.mimeType && img.mimeType !== "" ? img.mimeType : "image/jpeg";
         const ext = contentType.split("/")[1] || "jpg";
         const base =
-          img.fileName?.replace(/\s+/g, "_").replace(/[^\w\.-]/g, "") || `photo_${i}.${ext}`;
+          img.fileName?.replace(/\s+/g, "_").replace(/[^\w\.-]/g, "") ||
+          `photo_${i}.${ext}`;
         const filename = base.includes(".") ? base : `${base}.${ext}`;
         const path = `${userId}/${Date.now()}_${i}_${filename}`;
 
-        const { error } = await supabase.storage.from("items").upload(path, ab, {
-          contentType,
-          cacheControl: "3600",
-          upsert: false,
-        });
-        if (error) throw new Error(`Error subiendo ${filename}: ${error.message}`);
+        const { error } = await supabase.storage
+          .from("items")
+          .upload(path, ab, {
+            contentType,
+            cacheControl: "3600",
+            upsert: false,
+          });
+        if (error)
+          throw new Error(`Error subiendo ${filename}: ${error.message}`);
 
         const { data } = supabase.storage.from("items").getPublicUrl(path);
         return { url: data.publicUrl as string, contentType, filename };
@@ -133,7 +141,8 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
   };
 
   const submit = async () => {
-    if (!title.trim()) return Alert.alert("Falta título", "Agrega un título para tu artículo.");
+    if (!title.trim())
+      return Alert.alert("Falta título", "Agrega un título para tu artículo.");
     const priceNum = Number(price);
     if (!price || isNaN(priceNum) || priceNum <= 0) {
       return Alert.alert("Precio inválido", "Ingresa un número mayor a 0.");
@@ -167,7 +176,9 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
       if (!inserted?.id) throw new Error("No se obtuvo el id del artículo.");
 
       const articuloId: number =
-        typeof inserted.id === "string" ? parseInt(inserted.id, 10) : inserted.id;
+        typeof inserted.id === "string"
+          ? parseInt(inserted.id, 10)
+          : inserted.id;
 
       for (const u of uploads) {
         const nombre_archivo = (() => {
@@ -207,8 +218,18 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable onPress={onClose} className="absolute inset-0" style={{ backgroundColor: COLORS.overlay }} />
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <Pressable
+        onPress={onClose}
+        className="absolute inset-0"
+        style={{ backgroundColor: COLORS.overlay }}
+      />
 
       <KeyboardAvoidingView
         className="absolute bottom-0 w-full rounded-t-3xl"
@@ -221,25 +242,40 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
           keyboardShouldPersistTaps="handled"
         >
           <View className="flex-row items-center justify-between mb-6">
-            <Text className="text-[18px] font-semibold" style={{ color: COLORS.text }}>
+            <Text
+              className="text-[18px] font-semibold"
+              style={{ color: COLORS.text }}
+            >
               Publicar nuevo artículo
             </Text>
-            <Pressable onPress={onClose} className="rounded-full p-1 active:opacity-70">
+            <Pressable
+              onPress={onClose}
+              className="rounded-full p-1 active:opacity-70"
+            >
               <Feather name="x" size={22} color={COLORS.iconMuted} />
             </Pressable>
           </View>
 
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>Título</Text>
+          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+            Título
+          </Text>
           <TextInput
             placeholder="Ej. Motosierra Husqvarna 585XP"
             placeholderTextColor={COLORS.iconMuted}
             value={title}
             onChangeText={setTitle}
             className="rounded-2xl px-4 py-3 text-base mb-4"
-            style={{ color: COLORS.text, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }}
+            style={{
+              color: COLORS.text,
+              backgroundColor: COLORS.card,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+            }}
           />
 
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>Precio</Text>
+          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+            Precio
+          </Text>
           <View className="flex-row items-center gap-2 mb-4">
             <TextInput
               placeholder="42"
@@ -248,22 +284,39 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
               value={price}
               onChangeText={setPrice}
               className="flex-1 rounded-2xl px-4 py-3 text-base"
-              style={{ color: COLORS.text, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }}
+              style={{
+                color: COLORS.text,
+                backgroundColor: COLORS.card,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
             />
             <View className="relative">
               <Pressable
                 onPress={() => setShowCurrencyMenu(!showCurrencyMenu)}
                 className="flex-row items-center gap-1 rounded-2xl px-4 py-3 border"
-                style={{ borderColor: COLORS.border, backgroundColor: COLORS.card }}
+                style={{
+                  borderColor: COLORS.border,
+                  backgroundColor: COLORS.card,
+                }}
               >
-                <Text style={{ color: COLORS.text, fontWeight: "600" }}>{currency}</Text>
-                <Feather name="chevron-down" size={18} color={COLORS.iconMuted} />
+                <Text style={{ color: COLORS.text, fontWeight: "600" }}>
+                  {currency}
+                </Text>
+                <Feather
+                  name="chevron-down"
+                  size={18}
+                  color={COLORS.iconMuted}
+                />
               </Pressable>
 
               {showCurrencyMenu && (
                 <View
                   className="absolute top-14 right-0 rounded-2xl border z-50"
-                  style={{ borderColor: COLORS.border, backgroundColor: COLORS.card }}
+                  style={{
+                    borderColor: COLORS.border,
+                    backgroundColor: COLORS.card,
+                  }}
                 >
                   {(["USD", "MXN", "EUR"] as Currency[]).map((c) => (
                     <Pressable
@@ -289,7 +342,9 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
             </View>
           </View>
 
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>Periodo</Text>
+          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+            Periodo
+          </Text>
           <View className="flex-row gap-2 mb-6">
             {(["hour", "day", "week"] as Period[]).map((p) => {
               const active = p === period;
@@ -303,27 +358,45 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
                     borderColor: active ? COLORS.accent : COLORS.border,
                   }}
                 >
-                  <Text className="text-sm font-medium" style={{ color: active ? "#fff" : COLORS.text }}>
-                    {p === "hour" ? "Por hora" : p === "day" ? "Por día" : "Por semana"}
+                  <Text
+                    className="text-sm font-medium"
+                    style={{ color: active ? "#fff" : COLORS.text }}
+                  >
+                    {p === "hour"
+                      ? "Por hora"
+                      : p === "day"
+                        ? "Por día"
+                        : "Por semana"}
                   </Text>
                 </Pressable>
               );
             })}
           </View>
 
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>Categoría</Text>
+          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+            Categoría
+          </Text>
           <Pressable
             onPress={() => setShowCategories(true)}
             className="rounded-2xl px-4 py-3 flex-row items-center justify-between mb-6"
-            style={{ backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }}
+            style={{
+              backgroundColor: COLORS.card,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+            }}
           >
-            <Text className="text-base" style={{ color: category ? COLORS.text : COLORS.iconMuted }}>
+            <Text
+              className="text-base"
+              style={{ color: category ? COLORS.text : COLORS.iconMuted }}
+            >
               {category ? category.label : "Elige una categoría"}
             </Text>
             <Feather name="chevron-right" size={20} color={COLORS.iconMuted} />
           </Pressable>
 
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>Descripción</Text>
+          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+            Descripción
+          </Text>
           <TextInput
             placeholder="Detalles, estado, condiciones y políticas de renta…"
             placeholderTextColor={COLORS.iconMuted}
@@ -333,52 +406,94 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
             numberOfLines={5}
             textAlignVertical="top"
             className="rounded-2xl px-4 py-3 text-base mb-6"
-            style={{ color: COLORS.text, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }}
+            style={{
+              color: COLORS.text,
+              backgroundColor: COLORS.card,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+            }}
           />
 
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>Fotos</Text>
-          <Pressable
-            onPress={pickImages}
-            className="rounded-2xl px-4 py-10 items-center justify-center mb-3"
-            style={{ borderWidth: 1, borderStyle: "dashed", borderColor: COLORS.dashed, backgroundColor: COLORS.card }}
-          >
-            <Text style={{ color: COLORS.subtext }}>
-              {images.length ? "Agregar más fotos" : "Agregar fotos"}
-            </Text>
-          </Pressable>
+          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+            Fotos
+          </Text>
 
-          {images.length > 0 && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              className="mb-6"
-              contentContainerStyle={{ gap: 10 }}
-            >
-              {images.map((img, idx) => (
-                <View key={`${img.uri}-${idx}`} className="relative">
-                  <Image
-                    source={{ uri: img.uri }}
-                    className="w-28 h-28 rounded-xl"
-                    style={{ borderWidth: 1, borderColor: COLORS.border }}
-                  />
+          <View
+            className="rounded-2xl mb-6 border bg-white dark:bg-zinc-900"
+            // usamos dashed + color dinámico desde COLORS
+            style={{ borderColor: COLORS.dashed, borderStyle: "dashed" }}
+          >
+            {images.length === 0 ? (
+              <Pressable
+                onPress={pickImages}
+                className="h-36 w-full items-center justify-center active:opacity-80"
+              >
+                <Text className="text-sm" style={{ color: COLORS.subtext }}>
+                  Agregar fotos
+                </Text>
+              </Pressable>
+            ) : (
+              <View className="p-3">
+                {/* Grid de miniaturas + tile Agregar dentro del mismo panel */}
+                <View className="flex-row flex-wrap">
+                  {images.map((img, idx) => (
+                    <View key={`${img.uri}-${idx}`} className="w-24 h-24 m-1">
+                      <Image
+                        source={{ uri: img.uri }}
+                        className="w-full h-full rounded-xl border"
+                        style={{ borderColor: COLORS.border }}
+                      />
+                      <Pressable
+                        onPress={() => removeImage(idx)}
+                        className="absolute -top-2 -right-2 px-2 py-1 rounded-full"
+                        style={{
+                          backgroundColor: isDark ? "#fff" : "rgba(0,0,0,0.85)",
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Quitar imagen"
+                      >
+                        <Text
+                          className="text-xs"
+                          style={{ color: isDark ? "#000" : "#fff" }}
+                        >
+                          Quitar
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ))}
+
+                  {/* Tile de “Agregar” dentro del panel */}
                   <Pressable
-                    onPress={() => removeImage(idx)}
-                    className="absolute -top-2 -right-2 px-2 py-1 rounded-full"
-                    style={{ backgroundColor: isDark ? "#fff" : "rgba(0,0,0,0.85)" }}
+                    onPress={pickImages}
+                    className="w-24 h-24 m-1 items-center justify-center rounded-xl border active:opacity-80"
+                    style={{
+                      borderColor: COLORS.dashed,
+                      borderStyle: "dashed",
+                    }}
                   >
-                    <Text style={{ color: isDark ? "#000" : "#fff", fontSize: 12 }}>Quitar</Text>
+                    <Feather name="plus" size={22} color={COLORS.iconMuted} />
+                    <Text
+                      className="mt-1 text-xs"
+                      style={{ color: COLORS.subtext }}
+                    >
+                      Agregar
+                    </Text>
                   </Pressable>
                 </View>
-              ))}
-            </ScrollView>
-          )}
+              </View>
+            )}
+          </View>
 
           <View className="flex-row justify-between mt-2">
             <View className="flex-1 mr-2">
               <Button label="Cancelar" variant="ghost" onPress={onClose} />
             </View>
             <View className="flex-1 ml-2">
-              <Button label={loading ? "Publicando…" : "Publicar"} variant="primary" onPress={submit} />
+              <Button
+                label={loading ? "Publicando…" : "Publicar"}
+                variant="primary"
+                onPress={submit}
+              />
             </View>
           </View>
         </ScrollView>
