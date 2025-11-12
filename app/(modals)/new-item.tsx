@@ -93,7 +93,6 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
   const [showDeliveryMenu, setShowDeliveryMenu] = useState(false);
   const [tarifaEntrega, setTarifaEntrega] = useState<string>("");
 
-  const [latitud, setLatitud] = useState<string>("");
   const [longitud, setLongitud] = useState<string>("");
 
   const [loading, setLoading] = useState(false);
@@ -224,7 +223,6 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
           estado_publicacion: estadoPublicacion,
           publicado_en:
             estadoPublicacion === "publicado" ? new Date().toISOString() : null,
-          latitud: num(latitud),
           longitud: num(longitud),
           url_publica: firstImageUrl,
         })
@@ -548,7 +546,7 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
           <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
             Valores adicionales
           </Text>
-          <View className="flex-row gap-2 mb-2">
+          <View className="flex-row gap-2 mb-2 ">
             <TextInput
               placeholder="Valor de reposición"
               placeholderTextColor={COLORS.iconMuted}
@@ -579,7 +577,7 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
             />
           </View>
 
-          <View className="flex-row gap-2 mb-2">
+          <View className="flex-row gap-2 mb-2 py-6">
             <TextInput
               placeholder="Mín. horas (ej. 2)"
               placeholderTextColor={COLORS.iconMuted}
@@ -700,40 +698,6 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
                 borderWidth: 1,
                 borderColor: COLORS.border,
                 opacity: deliveryMode === "entrega" ? 1 : 0.6,
-              }}
-            />
-          </View>
-
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Ubicación (opcional)
-          </Text>
-          <View className="flex-row gap-2 mb-6">
-            <TextInput
-              placeholder="Latitud"
-              placeholderTextColor={COLORS.iconMuted}
-              keyboardType="decimal-pad"
-              value={latitud}
-              onChangeText={setLatitud}
-              className="flex-1 rounded-2xl px-4 py-3 text-base"
-              style={{
-                color: COLORS.text,
-                backgroundColor: COLORS.card,
-                borderWidth: 1,
-                borderColor: COLORS.border,
-              }}
-            />
-            <TextInput
-              placeholder="Longitud"
-              placeholderTextColor={COLORS.iconMuted}
-              keyboardType="decimal-pad"
-              value={longitud}
-              onChangeText={setLongitud}
-              className="flex-1 rounded-2xl px-4 py-3 text-base"
-              style={{
-                color: COLORS.text,
-                backgroundColor: COLORS.card,
-                borderWidth: 1,
-                borderColor: COLORS.border,
               }}
             />
           </View>
@@ -868,21 +832,8 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
       <CategoriesSheet
         visible={showCategories}
         onClose={() => setShowCategories(false)}
-        data={DEFAULT_CATEGORIES}
         onSelect={(cat) => setCategory(cat)}
       />
     </Modal>
   );
 }
-
-const DEFAULT_CATEGORIES: Category[] = [
-  { key: "tools", label: "Tools", icon: "tools" },
-  { key: "electronics", label: "Electronics", icon: "cellphone-link" },
-  { key: "sports", label: "Sports equipment", icon: "basketball" },
-  { key: "vehicles", label: "Vehicles", icon: "car-outline" },
-  { key: "household", label: "Household goods", icon: "sofa-outline" },
-  { key: "garden", label: "Garden and outdoors", icon: "flower-outline" },
-  { key: "games", label: "Games and toys", icon: "puzzle-outline" },
-  { key: "office", label: "Office supplies", icon: "briefcase-outline" },
-  { key: "others", label: "Others", icon: "dots-horizontal-circle-outline" },
-];
