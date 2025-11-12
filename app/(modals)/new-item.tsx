@@ -278,7 +278,7 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
           </Text>
           <View className="flex-row items-center gap-2 mb-4">
             <TextInput
-              placeholder="42"
+              placeholder="$ 42"
               placeholderTextColor={COLORS.iconMuted}
               keyboardType="numeric"
               value={price}

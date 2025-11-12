@@ -41,9 +41,9 @@ export const DEFAULT_NAV_ITEMS: NavItem[] = [
   },
   {
     key: "Cart",
-    label: "Favorites",
+    label: "Cart",
     icon: "shopping-cart",
-    href: "/favorites" as const,
+    href: "/cart" as const,
   },
   { key: "home", label: "Home", icon: "home", href: "/main" as const },
   { key: "tickets", label: "Tickets", icon: "tag", href: "/tickets" as const },
