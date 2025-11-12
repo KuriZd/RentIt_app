@@ -21,6 +21,9 @@ import CategoriesSheet, { Category } from "./categories";
 type Period = "hour" | "day" | "week";
 type Currency = "USD" | "MXN" | "EUR";
 type UnidadPrecio = "hora" | "dia" | "semana";
+type EstadoArticulo = "nuevo" | "como_nuevo" | "bueno" | "aceptable";
+type EstadoPublicacion = "borrador" | "publicado";
+type DeliveryMode = "retiro" | "entrega";
 
 type LocalAsset = {
   uri: string;
@@ -71,9 +74,28 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState<string>("");
   const [period, setPeriod] = useState<Period>("day");
+  const [periodQty, setPeriodQty] = useState<string>("1");
   const [currency, setCurrency] = useState<Currency>("USD");
   const [category, setCategory] = useState<Category | null>(null);
   const [desc, setDesc] = useState("");
+
+  const [estadoArticulo, setEstadoArticulo] =
+    useState<EstadoArticulo>("como_nuevo");
+  const [estadoPublicacion, setEstadoPublicacion] =
+    useState<EstadoPublicacion>("publicado");
+  const [valorReposicion, setValorReposicion] = useState<string>("");
+  const [depositoSeguridad, setDepositoSeguridad] = useState<string>("");
+  const [duracionMinHoras, setDuracionMinHoras] = useState<string>("");
+  const [duracionMaxDias, setDuracionMaxDias] = useState<string>("");
+  const [cantidadDisponible, setCantidadDisponible] = useState<string>("1");
+
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("retiro");
+  const [showDeliveryMenu, setShowDeliveryMenu] = useState(false);
+  const [tarifaEntrega, setTarifaEntrega] = useState<string>("");
+
+  const [latitud, setLatitud] = useState<string>("");
+  const [longitud, setLongitud] = useState<string>("");
+
   const [loading, setLoading] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
   const [showCurrencyMenu, setShowCurrencyMenu] = useState(false);
@@ -140,12 +162,29 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
     return uploads;
   };
 
+  const num = (s: string) => {
+    if (!s.trim()) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const onlyInt = (s: string) => s.replace(/[^\d]/g, "");
+
   const submit = async () => {
     if (!title.trim())
       return Alert.alert("Falta título", "Agrega un título para tu artículo.");
     const priceNum = Number(price);
     if (!price || isNaN(priceNum) || priceNum <= 0) {
       return Alert.alert("Precio inválido", "Ingresa un número mayor a 0.");
+    }
+
+    const qty = Math.max(1, parseInt(onlyInt(periodQty || "1"), 10));
+
+    if (
+      deliveryMode === "entrega" &&
+      (!tarifaEntrega || Number(tarifaEntrega) < 0)
+    ) {
+      return Alert.alert("Tarifa de entrega", "Agrega una tarifa válida.");
     }
 
     try {
@@ -156,18 +195,38 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
       const userId = authData.user.id;
 
       const uploads = images.length ? await uploadToSupabase(userId) : [];
+      const firstImageUrl = uploads[0]?.url ?? null;
+
+      const unidad = mapPeriodToUnidad(period);
+      const precioPorUnidad = +(priceNum / qty).toFixed(2);
+      const idCategoria = null;
 
       const { data: inserted, error: insertErr } = await supabase
         .from("articulos")
         .insert({
           id_propietario: userId,
-          id_categoria: null,
+          id_categoria: idCategoria,
           titulo: title.trim(),
           descripcion: desc.trim(),
-          precio: priceNum,
-          unidad_precio: mapPeriodToUnidad(period),
-          publicado_en: new Date().toISOString(),
-          estado_publicacion: "publicado",
+          precio: precioPorUnidad,
+          unidad_precio: unidad,
+          periodo_cantidad: qty,
+          valor_reposicion: num(valorReposicion),
+          deposito_seguridad: num(depositoSeguridad),
+          duracion_min_horas: num(duracionMinHoras),
+          duracion_max_dias: num(duracionMaxDias),
+          cantidad_disponible: num(cantidadDisponible) ?? 1,
+          solo_retiro: deliveryMode === "retiro",
+          entrega_disponible: deliveryMode === "entrega",
+          tarifa_entrega:
+            deliveryMode === "entrega" ? num(tarifaEntrega) : null,
+          estado_articulo: estadoArticulo,
+          estado_publicacion: estadoPublicacion,
+          publicado_en:
+            estadoPublicacion === "publicado" ? new Date().toISOString() : null,
+          latitud: num(latitud),
+          longitud: num(longitud),
+          url_publica: firstImageUrl,
         })
         .select("id")
         .single();
@@ -208,7 +267,12 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
         });
       }
 
-      Alert.alert("Publicado", "Tu artículo se publicó correctamente.");
+      Alert.alert(
+        estadoPublicacion === "publicado" ? "Publicado" : "Guardado",
+        estadoPublicacion === "publicado"
+          ? "Tu artículo se publicó correctamente."
+          : "Tu borrador se guardó correctamente."
+      );
       onClose();
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "No se pudo publicar.");
@@ -274,11 +338,11 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
           />
 
           <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Precio
+            Precio total ingresado
           </Text>
-          <View className="flex-row items-center gap-2 mb-4">
+          <View className="flex-row items-center gap-2 mb-2">
             <TextInput
-              placeholder="$ 42"
+              placeholder="$ 900"
               placeholderTextColor={COLORS.iconMuted}
               keyboardType="numeric"
               value={price}
@@ -343,15 +407,100 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
           </View>
 
           <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Periodo
+            Periodo (el precio ingresado corresponde a N unidades)
           </Text>
-          <View className="flex-row gap-2 mb-6">
-            {(["hour", "day", "week"] as Period[]).map((p) => {
-              const active = p === period;
+
+          <View className="flex-row items-center gap-8 mb-3">
+            <View>
+              <Text
+                className="text-[13px] mb-1"
+                style={{ color: COLORS.subtext }}
+              >
+                Cantidad
+              </Text>
+              <View className="flex-row gap-2 mt-2">
+                {(["hour", "day", "week"] as Period[]).map((p) => {
+                  const active = p === period;
+                  return (
+                    <Pressable
+                      key={p}
+                      onPress={() => setPeriod(p)}
+                      className="px-4 py-2 rounded-2xl border"
+                      style={{
+                        backgroundColor: active ? COLORS.accent : "transparent",
+                        borderColor: active ? COLORS.accent : COLORS.border,
+                      }}
+                    >
+                      <Text
+                        className="text-sm font-medium"
+                        style={{ color: active ? "#fff" : COLORS.text }}
+                      >
+                        {p === "hour" ? "Hora" : p === "day" ? "Día" : "Semana"}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={{ minWidth: 80, marginTop: 27 }}>
+              <TextInput
+                value={periodQty}
+                onChangeText={(t) => setPeriodQty(t.replace(/[^\d]/g, ""))}
+                keyboardType="number-pad"
+                placeholder="3"
+                placeholderTextColor={COLORS.iconMuted}
+                className="rounded-2xl px-4 py-2 text-base text-center"
+                style={{
+                  color: COLORS.text,
+                  backgroundColor: COLORS.card,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                }}
+              />
+            </View>
+          </View>
+
+          {price?.trim() && Number(price) > 0 && (
+            <Text
+              className="text-[13px] mb-6"
+              style={{ color: COLORS.subtext }}
+            >
+              Guardarás:{" "}
+              <Text style={{ color: COLORS.text, fontWeight: "600" }}>
+                {currency}{" "}
+                {(
+                  Number(price) / Math.max(1, parseInt(periodQty || "1", 10))
+                ).toFixed(2)}
+              </Text>{" "}
+              por{" "}
+              {period === "hour" ? "hora" : period === "day" ? "día" : "semana"}{" "}
+              · Mostrando como:{" "}
+              <Text style={{ color: COLORS.text, fontWeight: "600" }}>
+                {currency} {Number(price).toFixed(2)}
+              </Text>{" "}
+              por {periodQty || "1"}{" "}
+              {period === "hour"
+                ? "hora(s)"
+                : period === "day"
+                  ? "día(s)"
+                  : "semana(s)"}
+              .
+            </Text>
+          )}
+
+          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+            Condición del artículo
+          </Text>
+          <View className="flex-row flex-wrap gap-2 mb-6">
+            {(
+              ["nuevo", "como_nuevo", "bueno", "aceptable"] as EstadoArticulo[]
+            ).map((e) => {
+              const active = e === estadoArticulo;
               return (
                 <Pressable
-                  key={p}
-                  onPress={() => setPeriod(p)}
+                  key={e}
+                  onPress={() => setEstadoArticulo(e)}
                   className="px-4 py-2 rounded-2xl border"
                   style={{
                     backgroundColor: active ? COLORS.accent : "transparent",
@@ -362,15 +511,231 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
                     className="text-sm font-medium"
                     style={{ color: active ? "#fff" : COLORS.text }}
                   >
-                    {p === "hour"
-                      ? "Por hora"
-                      : p === "day"
-                        ? "Por día"
-                        : "Por semana"}
+                    {e.replace("_", " ")}
                   </Text>
                 </Pressable>
               );
             })}
+          </View>
+
+          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+            Estado de publicación
+          </Text>
+          <View className="flex-row gap-2 mb-6">
+            {(["borrador", "publicado"] as EstadoPublicacion[]).map((s) => {
+              const active = s === estadoPublicacion;
+              return (
+                <Pressable
+                  key={s}
+                  onPress={() => setEstadoPublicacion(s)}
+                  className="px-4 py-2 rounded-2xl border"
+                  style={{
+                    backgroundColor: active ? COLORS.accent : "transparent",
+                    borderColor: active ? COLORS.accent : COLORS.border,
+                  }}
+                >
+                  <Text
+                    className="text-sm font-medium"
+                    style={{ color: active ? "#fff" : COLORS.text }}
+                  >
+                    {s}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+            Valores adicionales
+          </Text>
+          <View className="flex-row gap-2 mb-2">
+            <TextInput
+              placeholder="Valor de reposición"
+              placeholderTextColor={COLORS.iconMuted}
+              keyboardType="numeric"
+              value={valorReposicion}
+              onChangeText={setValorReposicion}
+              className="flex-1 rounded-2xl px-4 py-3 text-base"
+              style={{
+                color: COLORS.text,
+                backgroundColor: COLORS.card,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
+            />
+            <TextInput
+              placeholder="Depósito seguridad"
+              placeholderTextColor={COLORS.iconMuted}
+              keyboardType="numeric"
+              value={depositoSeguridad}
+              onChangeText={setDepositoSeguridad}
+              className="flex-1 rounded-2xl px-4 py-3 text-base"
+              style={{
+                color: COLORS.text,
+                backgroundColor: COLORS.card,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
+            />
+          </View>
+
+          <View className="flex-row gap-2 mb-2">
+            <TextInput
+              placeholder="Mín. horas (ej. 2)"
+              placeholderTextColor={COLORS.iconMuted}
+              keyboardType="number-pad"
+              value={duracionMinHoras}
+              onChangeText={setDuracionMinHoras}
+              className="flex-1 rounded-2xl px-4 py-3 text-base"
+              style={{
+                color: COLORS.text,
+                backgroundColor: COLORS.card,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
+            />
+            <TextInput
+              placeholder="Máx. días (ej. 7)"
+              placeholderTextColor={COLORS.iconMuted}
+              keyboardType="number-pad"
+              value={duracionMaxDias}
+              onChangeText={setDuracionMaxDias}
+              className="flex-1 rounded-2xl px-4 py-3 text-base"
+              style={{
+                color: COLORS.text,
+                backgroundColor: COLORS.card,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
+            />
+          </View>
+
+          <View className="flex-row gap-2 mb-6">
+            <TextInput
+              placeholder="Cantidad disponible"
+              placeholderTextColor={COLORS.iconMuted}
+              keyboardType="number-pad"
+              value={cantidadDisponible}
+              onChangeText={setCantidadDisponible}
+              className="flex-1 rounded-2xl px-4 py-3 text-base"
+              style={{
+                color: COLORS.text,
+                backgroundColor: COLORS.card,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
+            />
+          </View>
+
+          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+            Método de entrega
+          </Text>
+          <View className="flex-row items-center gap-2 mb-3">
+            <View className="relative">
+              <Pressable
+                onPress={() => setShowDeliveryMenu((v) => !v)}
+                className="flex-row items-center gap-2 rounded-2xl px-4 py-3 border"
+                style={{
+                  borderColor: COLORS.border,
+                  backgroundColor: COLORS.card,
+                  minWidth: 200,
+                }}
+              >
+                <Text style={{ color: COLORS.text, fontWeight: "600" }}>
+                  {deliveryMode === "retiro"
+                    ? "Solo retiro"
+                    : "Entrega disponible"}
+                </Text>
+                <Feather
+                  name="chevron-down"
+                  size={18}
+                  color={COLORS.iconMuted}
+                />
+              </Pressable>
+
+              {showDeliveryMenu && (
+                <View
+                  className="absolute top-14 left-0 right-0 z-50 rounded-2xl border"
+                  style={{
+                    borderColor: COLORS.border,
+                    backgroundColor: COLORS.card,
+                  }}
+                >
+                  {(["retiro", "entrega"] as DeliveryMode[]).map((m) => (
+                    <Pressable
+                      key={m}
+                      onPress={() => {
+                        setDeliveryMode(m);
+                        setShowDeliveryMenu(false);
+                        if (m === "retiro") setTarifaEntrega("");
+                      }}
+                      className="px-4 py-2"
+                    >
+                      <Text
+                        style={{
+                          color:
+                            m === deliveryMode ? COLORS.accent : COLORS.text,
+                          fontWeight: m === deliveryMode ? "600" : "400",
+                        }}
+                      >
+                        {m === "retiro" ? "Solo retiro" : "Entrega disponible"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <TextInput
+              editable={deliveryMode === "entrega"}
+              placeholder="Tarifa entrega"
+              placeholderTextColor={COLORS.iconMuted}
+              keyboardType="numeric"
+              value={tarifaEntrega}
+              onChangeText={setTarifaEntrega}
+              className="flex-1 rounded-2xl px-4 py-3 text-base"
+              style={{
+                color: COLORS.text,
+                backgroundColor: COLORS.card,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+                opacity: deliveryMode === "entrega" ? 1 : 0.6,
+              }}
+            />
+          </View>
+
+          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+            Ubicación (opcional)
+          </Text>
+          <View className="flex-row gap-2 mb-6">
+            <TextInput
+              placeholder="Latitud"
+              placeholderTextColor={COLORS.iconMuted}
+              keyboardType="decimal-pad"
+              value={latitud}
+              onChangeText={setLatitud}
+              className="flex-1 rounded-2xl px-4 py-3 text-base"
+              style={{
+                color: COLORS.text,
+                backgroundColor: COLORS.card,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
+            />
+            <TextInput
+              placeholder="Longitud"
+              placeholderTextColor={COLORS.iconMuted}
+              keyboardType="decimal-pad"
+              value={longitud}
+              onChangeText={setLongitud}
+              className="flex-1 rounded-2xl px-4 py-3 text-base"
+              style={{
+                color: COLORS.text,
+                backgroundColor: COLORS.card,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
+            />
           </View>
 
           <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
@@ -417,10 +782,8 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
           <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
             Fotos
           </Text>
-
           <View
             className="rounded-2xl mb-6 border bg-white dark:bg-zinc-900"
-            // usamos dashed + color dinámico desde COLORS
             style={{ borderColor: COLORS.dashed, borderStyle: "dashed" }}
           >
             {images.length === 0 ? (
@@ -434,7 +797,6 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
               </Pressable>
             ) : (
               <View className="p-3">
-                {/* Grid de miniaturas + tile Agregar dentro del mismo panel */}
                 <View className="flex-row flex-wrap">
                   {images.map((img, idx) => (
                     <View key={`${img.uri}-${idx}`} className="w-24 h-24 m-1">
@@ -461,8 +823,6 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
                       </Pressable>
                     </View>
                   ))}
-
-                  {/* Tile de “Agregar” dentro del panel */}
                   <Pressable
                     onPress={pickImages}
                     className="w-24 h-24 m-1 items-center justify-center rounded-xl border active:opacity-80"
@@ -490,7 +850,13 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
             </View>
             <View className="flex-1 ml-2">
               <Button
-                label={loading ? "Publicando…" : "Publicar"}
+                label={
+                  loading
+                    ? "Guardando…"
+                    : estadoPublicacion === "publicado"
+                      ? "Publicar"
+                      : "Guardar borrador"
+                }
                 variant="primary"
                 onPress={submit}
               />
