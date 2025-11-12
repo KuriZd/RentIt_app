@@ -1,5 +1,5 @@
-// app/profile/edit.tsx
 import { Feather } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -21,7 +21,6 @@ import { supabase } from "../../utils/supabase";
 
 /* ---------------- Tipos ---------------- */
 type SelectItem = { label: string; value: string };
-
 type SelectProps = {
   label?: string;
   value?: string;
@@ -29,7 +28,6 @@ type SelectProps = {
   items: SelectItem[];
   onChange?: (val: string) => void;
 };
-
 type FieldProps = {
   label?: string;
   placeholder?: string;
@@ -44,7 +42,7 @@ type FieldProps = {
     | "decimal-pad";
 };
 
-/* ---------------- Select con Modal y paleta COLORS ---------------- */
+/* ---------------- Select con Modal ---------------- */
 function Select({
   label,
   value,
@@ -55,7 +53,6 @@ function Select({
   const [open, setOpen] = useState(false);
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
-
   const COLORS = useMemo(
     () => ({
       pill: isDark ? "#27272a" : "#f3f4f6",
@@ -90,12 +87,9 @@ function Select({
           {label}
         </Text>
       )}
-
       <Pressable
         className="h-12 flex-row items-center justify-between rounded-xl px-3"
         onPress={() => setOpen(true)}
-        accessibilityRole="button"
-        accessibilityLabel={label || "Abrir selector"}
         style={{
           backgroundColor: COLORS.inputBg,
           borderColor: COLORS.ring,
@@ -119,13 +113,11 @@ function Select({
         animationType="fade"
         onRequestClose={() => setOpen(false)}
       >
-        {/* overlay */}
         <Pressable
           className="flex-1"
           onPress={() => setOpen(false)}
           style={{ backgroundColor: COLORS.overlay }}
         />
-        {/* card */}
         <View
           className="absolute left-4 right-4 top-1/4 rounded-2xl p-3"
           style={[{ backgroundColor: COLORS.card }, shadow]}
@@ -158,7 +150,6 @@ function Select({
                     onChange?.(item.value);
                     setOpen(false);
                   }}
-                  accessibilityRole="button"
                   accessibilityState={{ selected }}
                   android_ripple={{ color: isDark ? "#27272a" : "#f3f4f6" }}
                 >
@@ -181,7 +172,7 @@ function Select({
   );
 }
 
-/* ---------------- Input reutilizable (usa COLORS) ---------------- */
+/* ---------------- Input reutilizable ---------------- */
 function Field({
   label,
   placeholder,
@@ -244,9 +235,9 @@ export default function ProfileEditScreen() {
     [isDark]
   );
 
-  const [avatarUri, setAvatarUri] = useState(
-    "https://images.unsplash.com/photo-1560972550-aba3456b5564?q=80&w=1200&auto=format&fit=crop&ixlib=rb-4.1.0"
-  );
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   // Estados del formulario
   const [fullname, setFullname] = useState("");
@@ -259,16 +250,13 @@ export default function ProfileEditScreen() {
   const [township, setTownship] = useState("");
   const [phone, setPhone] = useState("");
   const [marital, setMarital] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
   // Fecha de nacimiento
   const now = new Date();
   const years = useMemo<SelectItem[]>(() => {
     const arr: SelectItem[] = [];
-    for (let y = now.getFullYear(); y >= now.getFullYear() - 100; y--) {
+    for (let y = now.getFullYear(); y >= now.getFullYear() - 100; y--)
       arr.push({ label: String(y), value: String(y) });
-    }
     return arr;
   }, []);
   const months = useMemo<SelectItem[]>(
@@ -309,13 +297,11 @@ export default function ProfileEditScreen() {
     { label: "Unión libre", value: "cohabiting" },
   ];
 
-  // Helpers
   const onlyDigits = (s: string) => s.replace(/[^\d]/g, "");
 
-  /* ============ CARGA INICIAL DESDE SUPABASE (tabla 'perfiles') ============ */
+  /* ====== CARGA INICIAL DESDE SUPABASE (tabla 'perfiles') ====== */
   useEffect(() => {
     let alive = true;
-
     async function load() {
       try {
         setLoading(true);
@@ -329,7 +315,7 @@ export default function ProfileEditScreen() {
         const { data, error } = await supabase
           .from("perfiles")
           .select(
-            "nombre, curp, estado_civil, email, fecha_nacimiento, direccion"
+            "nombre, curp, estado_civil, email, fecha_nacimiento, direccion, avatar_url"
           )
           .eq("id", user.id)
           .maybeSingle();
@@ -342,8 +328,8 @@ export default function ProfileEditScreen() {
           setCurp(((data as any).curp ?? "").toUpperCase());
           setEmail(((data as any).email ?? "").toLowerCase());
           setMarital((data as any).estado_civil ?? "");
+          setAvatarUri((data as any).avatar_url || null);
 
-          // fecha_nacimiento => YYYY-MM-DD
           const bd: string | null = (data as any).fecha_nacimiento ?? null;
           if (bd && /^\d{4}-\d{2}-\d{2}$/.test(bd)) {
             const [y, m, d] = bd.split("-");
@@ -370,12 +356,53 @@ export default function ProfileEditScreen() {
         if (alive) setLoading(false);
       }
     }
-
     load();
     return () => {
       alive = false;
     };
   }, [router]);
+
+  /* ====== PICKER AVATAR + UPLOAD ====== */
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permiso requerido",
+        "Concede permiso para acceder a tus fotos."
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
+      allowsMultipleSelection: false,
+      selectionLimit: 1,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      setAvatarUri(result.assets[0].uri); // local URI; se sube al guardar
+    }
+  };
+
+  const uploadAvatarToSupabase = async (userId: string, imageUri: string) => {
+    // si ya es una URL http(s) asumimos que ya está en storage
+    if (/^https?:\/\//i.test(imageUri)) return imageUri;
+
+    const res = await fetch(imageUri);
+    const ab = await res.arrayBuffer();
+    const contentType = "image/jpeg";
+    const filename = `avatar_${userId}_${Date.now()}.jpg`;
+    const path = `${userId}/${filename}`;
+
+    const { error } = await supabase.storage.from("profile").upload(path, ab, {
+      contentType,
+      upsert: true,
+      cacheControl: "3600",
+    });
+    if (error) throw new Error(`Upload avatar: ${error.message}`);
+
+    const { data } = supabase.storage.from("profile").getPublicUrl(path);
+    return data.publicUrl as string;
+  };
 
   /* ======================= GUARDAR EN SUPABASE ======================= */
   async function onSave() {
@@ -402,26 +429,36 @@ export default function ProfileEditScreen() {
     const birthdate =
       dYear && dMonth && dDay ? `${dYear}-${dMonth}-${dDay}` : null;
 
-    const payload = {
-      id: user.id,
-      nombre: fullname.trim(),
-      curp: curp.trim().toUpperCase() || null,
-      estado_civil: marital || null,
-      email: email.trim().toLowerCase() || null,
-      fecha_nacimiento: birthdate, // date o null
-      direccion: {
-        calle: street || null,
-        colonia: colonia || null,
-        cp: zip || null,
-        municipio: town || null,
-        estado: township || null,
-        telefono: onlyDigits(phone) || null,
-      },
-    };
-
     try {
       setSaving(true);
-      // upsert: crea si no existe, actualiza si existe
+
+      // 1️⃣ Subir avatar si es local
+      let avatar_url: string | null = avatarUri || null;
+      if (avatarUri && !/^https?:\/\//i.test(avatarUri)) {
+        avatar_url = await uploadAvatarToSupabase(user.id, avatarUri);
+      }
+
+      // 2️⃣ Construir el payload con los nombres reales de columnas
+      const payload = {
+        id: user.id,
+        nombre: fullname.trim(),
+        curp: curp.trim().toUpperCase() || null,
+        estado_civil: marital || null,
+        email: email.trim().toLowerCase() || null,
+        telefono: onlyDigits(phone) || null,
+        fecha_nacimiento: birthdate,
+        direccion: {
+          calle: street || null,
+          colonia: colonia || null,
+          cp: onlyDigits(zip) || null,
+          municipio: town || null,
+          estado: township || null,
+        },
+        avatar_url: avatar_url,
+        actualizado_en: new Date().toISOString(), // 👈 nombre correcto de tu columna
+      };
+
+      // 3️⃣ Guardar en la tabla correcta
       const { error } = await supabase
         .from("perfiles")
         .upsert(payload, { onConflict: "id" })
@@ -430,6 +467,7 @@ export default function ProfileEditScreen() {
 
       if (error) throw error;
 
+      if (avatar_url) setAvatarUri(avatar_url);
       Alert.alert("Guardado", "Tu perfil se actualizó correctamente.");
       router.back();
     } catch (e: any) {
@@ -461,7 +499,7 @@ export default function ProfileEditScreen() {
           paddingBottom: 140,
         }}
       >
-        {/* Header con back */}
+        {/* Header */}
         <View className="mb-4 flex-row items-center">
           <Pressable
             onPress={() => router.back()}
@@ -480,15 +518,19 @@ export default function ProfileEditScreen() {
 
         {/* Avatar */}
         <View className="items-center mb-6">
-          <Image
-            source={{ uri: avatarUri }}
-            onError={() =>
-              setAvatarUri(
-                "https://images.unsplash.com/photo-1560972550-aba3456b5564?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.1.0"
-              )
-            }
-            className="h-36 w-36 rounded-full"
-          />
+          <Pressable onPress={pickImage} className="relative">
+            <Image
+              source={{
+                uri:
+                  avatarUri ||
+                  "https://images.unsplash.com/photo-1560972550-aba3456b5564?q=80&w=1200&auto=format&fit=crop&ixlib=rb-4.1.0",
+              }}
+              className="h-36 w-36 rounded-full"
+            />
+            <View className="absolute bottom-0 right-0 bg-white p-2 rounded-full shadow-md">
+              <Feather name="camera" size={24} color={COLORS.text} />
+            </View>
+          </Pressable>
         </View>
 
         {/* Campos */}
