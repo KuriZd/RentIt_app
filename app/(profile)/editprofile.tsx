@@ -432,13 +432,12 @@ export default function ProfileEditScreen() {
     try {
       setSaving(true);
 
-      // 1️⃣ Subir avatar si es local
+      //Subir avatar
       let avatar_url: string | null = avatarUri || null;
       if (avatarUri && !/^https?:\/\//i.test(avatarUri)) {
         avatar_url = await uploadAvatarToSupabase(user.id, avatarUri);
       }
 
-      // 2️⃣ Construir el payload con los nombres reales de columnas
       const payload = {
         id: user.id,
         nombre: fullname.trim(),
@@ -455,10 +454,9 @@ export default function ProfileEditScreen() {
           estado: township || null,
         },
         avatar_url: avatar_url,
-        actualizado_en: new Date().toISOString(), // 👈 nombre correcto de tu columna
+        actualizado_en: new Date().toISOString(),
       };
 
-      // 3️⃣ Guardar en la tabla correcta
       const { error } = await supabase
         .from("perfiles")
         .upsert(payload, { onConflict: "id" })
@@ -528,7 +526,7 @@ export default function ProfileEditScreen() {
               className="h-36 w-36 rounded-full"
             />
             <View className="absolute bottom-0 right-0 bg-white p-2 rounded-full shadow-md">
-              <Feather name="camera" size={24} color={COLORS.text} />
+              <Feather name="camera" size={24} color={COLORS.ring} />
             </View>
           </Pressable>
         </View>
