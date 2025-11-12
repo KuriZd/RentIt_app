@@ -1,80 +1,138 @@
 // app/(tabs)/index.tsx
-import React, { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import type { Category } from "../(modals)/categories";
 import HeaderSearch from "../../components/HeaderSearch";
 import ProductCarousel from "../../components/ProductCarousel";
+import { supabase } from "../../utils/supabase";
 
+/* --------- Tipo que espera tu ProductCarousel --------- */
 type Item = {
   id: string;
   title: string;
-  price: number;
-  per: string;
+  price: number; // mostramos el precio total para el periodo
+  per: string; // ej: "por 3 días" | "por 1 hora"
   image: string;
-  category: Category["key"];
+  category: Category["key"]; // usamos el id de categoría como string
 };
 
-const today: Item[] = [
-  { id: "101", title: "Motosierra Husqvarna 585XP", price: 10, per: "2 tow days", image: "http://bit.ly/4qoOoXG", category: "tools" },
-  { id: "102", title: "Folding Chairs Sc Black 12 pack", price: 42, per: "2 tow days", image: "http://bit.ly/4qoOoXG", category: "household" },
-  { id: "103", title: "Mesa Plegable Rectangular", price: 42, per: "2 tow days", image: "http://bit.ly/4qoOoXG", category: "household" },
-  { id: "104", title: "Mesa Plegable Rectangular", price: 42, per: "2 tow days", image: "http://bit.ly/4qoOoXG", category: "electronics" },
-  { id: "105", title: "Mesa Plegable Rectangular", price: 42, per: "2 tow days", image: "http://bit.ly/4qoOoXG", category: "household" },
-  { id: "106", title: "Mesa Plegable Rectangular", price: 42, per: "2 tow days", image: "http://bit.ly/4qoOoXG", category: "household" },
-  { id: "107", title: "Mesa Plegable Rectangular", price: 42, per: "2 tow days", image: "http://bit.ly/4qoOoXG", category: "household" },
-];
+/* --------- helpers --------- */
+const unitLabel = (u?: string) =>
+  u === "hora" ? "hora" : u === "semana" ? "semana" : "día";
 
-const popularHome: Item[] = [
-  { id: "201", title: "Descripcion del producto larga o corta", price: 42, per: "2 tow days", image: "https://images.unsplash.com/photo-1517336714731-489689fd1ca8", category: "tools" },
-  { id: "202", title: "Descripcion del producto larga o corta", price: 42, per: "2 tow days", image: "https://images.unsplash.com/photo-1511379938547-c1f69419868d", category: "electronics" },
-  { id: "203", title: "Descripcion del producto larga o corta", price: 42, per: "2 tow days", image: "https://images.unsplash.com/photo-1598327105666-5b89351aff97", category: "garden" },
-];
-
-const recommended: Item[] = [
-  { id: "301", title: "Taladro Inalámbrico Pro", price: 25, per: "2 tow days", image: "https://images.unsplash.com/photo-1568454537842-d933259bb258", category: "tools" },
-  { id: "302", title: "Set de Iluminación LED", price: 35, per: "2 tow days", image: "https://images.unsplash.com/photo-1478720568477-152d9b164e26", category: "electronics" },
-  { id: "303", title: "Kärcher Hidrolavadora", price: 30, per: "2 tow days", image: "https://images.unsplash.com/photo-1606229365485-93f49d9b6d18", category: "garden" },
-];
-
-function applyFilters(items: Item[], category?: Category["key"], q?: string) {
-  const qq = (q ?? "").trim().toLowerCase();
-  return items.filter((it) => {
-    const byCat = category ? it.category === category : true;
-    const byText = qq ? it.title.toLowerCase().includes(qq) : true;
-    return byCat && byText;
-  });
+function toItem(row: any): Item {
+  const qty = Number(row.periodo_cantidad ?? 1) || 1;
+  const perUnit = Number(row.precio ?? 0) || 0; // en tu BD guardamos precio POR UNIDAD
+  const total = +(perUnit * qty).toFixed(2); // mostramos total del periodo
+  const unidad = unitLabel(row.unidad_precio);
+  return {
+    id: String(row.id),
+    title: row.titulo ?? "",
+    price: total,
+    per: `por ${qty} ${unidad}${qty > 1 ? "s" : ""}`,
+    image:
+      row.url_publica ||
+      "https://images.unsplash.com/photo-1762704958591-fea0534458cc?ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&q=80&w=687",
+    category: String(row.id_categoria ?? ""),
+  };
 }
 
 export default function HomeScreen() {
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const [query] = useState<string>("");
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(
+    null
+  );
+  const [query, setQuery] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // datasets combinados (para el modo filtrado)
+  // datasets reales
+  const [today, setToday] = useState<Item[]>([]);
+  const [popularHome, setPopularHome] = useState<Item[]>([]);
+  const [recommended, setRecommended] = useState<Item[]>([]);
+
+  /* ---------- carga desde Supabase ---------- */
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      setLoading(true);
+      setErrorMsg(null);
+
+      // Solo artículos publicados, ordenados por fecha
+      const { data, error } = await supabase
+        .from("articulos")
+        .select(
+          "id, titulo, precio, unidad_precio, periodo_cantidad, url_publica, id_categoria, publicado_en"
+        )
+        .eq("estado_publicacion", "publicado")
+        .order("publicado_en", { ascending: false })
+        .limit(48);
+
+      if (!alive) return;
+
+      if (error) {
+        setErrorMsg(error.message);
+        setToday([]);
+        setPopularHome([]);
+        setRecommended([]);
+      } else {
+        const items = (data ?? []).map(toItem);
+
+        // Sencillo “split” en 3 secciones para mantener tu layout
+        const a = items.slice(0, 12);
+        const b = items.slice(12, 24);
+        const c = items.slice(24, 48);
+
+        setToday(a);
+        setPopularHome(b.length ? b : a);
+        setRecommended(c.length ? c : a);
+      }
+      setLoading(false);
+    }
+    load();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /* ---------- filtros en memoria ---------- */
+  function applyFilters(items: Item[], category?: Category["key"], q?: string) {
+    const qq = (q ?? "").trim().toLowerCase();
+    return items.filter((it) => {
+      const byCat = category ? it.category === category : true;
+      const byText = qq ? it.title.toLowerCase().includes(qq) : true;
+      return byCat && byText;
+    });
+  }
+
   const allItems = useMemo<Item[]>(
     () => [...today, ...popularHome, ...recommended],
-    []
+    [today, popularHome, recommended]
   );
 
   const filteredAll = useMemo(
     () => applyFilters(allItems, selectedCategory?.key, query),
     [allItems, selectedCategory, query]
   );
-
-  // carousels individuales (para modo normal sin filtro)
   const filteredToday = useMemo(
     () => applyFilters(today, selectedCategory?.key, query),
-    [selectedCategory, query]
+    [today, selectedCategory, query]
   );
   const filteredPopular = useMemo(
     () => applyFilters(popularHome, selectedCategory?.key, query),
-    [selectedCategory, query]
+    [popularHome, selectedCategory, query]
   );
   const filteredRecommended = useMemo(
     () => applyFilters(recommended, selectedCategory?.key, query),
-    [selectedCategory, query]
+    [recommended, selectedCategory, query]
   );
 
-  const isFiltering = !!selectedCategory;
+  const isFiltering = !!selectedCategory || !!query.trim();
 
   return (
     <View className="flex-1 bg-white dark:bg-black">
@@ -84,66 +142,112 @@ export default function HomeScreen() {
         onSellPress={() => {}}
       />
 
-      {/* Chip de filtro activo */}
-      {isFiltering && (
-        <View className="px-5 pt-2">
-          <Pressable
-            onPress={() => setSelectedCategory(null)}
-            className="self-start flex-row items-center gap-2 rounded-full px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800"
-          >
-            <Text className="text-sm text-neutral-700 dark:text-neutral-200">
-              {selectedCategory?.label}
-            </Text>
-            <Text className="text-sm text-neutral-500 dark:text-neutral-400">✕</Text>
-          </Pressable>
+      {/* Loading / Error */}
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator />
+          <Text className="mt-2 text-neutral-500 dark:text-neutral-400">
+            Cargando artículos…
+          </Text>
         </View>
-      )}
-
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 80 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {isFiltering ? (
-          // MODO FILTRADO: solo un bloque con resultados
-          <>
-            <View className="px-5 pt-4">
-              <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-                Results for {selectedCategory?.label}
-              </Text>
-              {filteredAll.length === 0 && (
-                <Text className="mt-2 text-neutral-500 dark:text-neutral-400">
-                  No hay resultados para esta categoría.
-                </Text>
+      ) : errorMsg ? (
+        <View className="flex-1 items-center justify-center px-6">
+          <Text className="text-center text-neutral-500 dark:text-neutral-400">
+            No pudimos cargar los artículos{"\n"}
+            {errorMsg}
+          </Text>
+        </View>
+      ) : (
+        <>
+          {/* Chip de filtro activo */}
+          {(selectedCategory || query.trim()) && (
+            <View className="px-5 pt-2 flex-row flex-wrap gap-2">
+              {selectedCategory && (
+                <Pressable
+                  onPress={() => setSelectedCategory(null)}
+                  className="self-start flex-row items-center gap-2 rounded-full px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800"
+                >
+                  <Text className="text-sm text-neutral-700 dark:text-neutral-200">
+                    {selectedCategory.label}
+                  </Text>
+                  <Text className="text-sm text-neutral-500 dark:text-neutral-400">
+                    ✕
+                  </Text>
+                </Pressable>
               )}
+              {query.trim() ? (
+                <View className="self-start rounded-full px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800">
+                  <Text className="text-sm text-neutral-700 dark:text-neutral-200">
+                    “{query.trim()}”
+                  </Text>
+                </View>
+              ) : null}
             </View>
-            <ProductCarousel items={filteredAll} className="mt-3" cardWidth={160} />
-          </>
-        ) : (
-          // MODO NORMAL: secciones originales
-          <>
-            <View className="px-5 pt-4">
-              <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-                Today selection
-              </Text>
-            </View>
-            <ProductCarousel items={filteredToday} className="mt-3" cardWidth={160} />
+          )}
 
-            <View className="px-5 mt-6">
-              <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-                Popular for the home
-              </Text>
-            </View>
-            <ProductCarousel items={filteredPopular} className="mt-3" cardWidth={160} />
+          <ScrollView
+            contentContainerStyle={{ paddingBottom: 80 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {isFiltering ? (
+              <>
+                <View className="px-5 pt-4">
+                  <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+                    {selectedCategory
+                      ? `Results for ${selectedCategory.label}`
+                      : "Resultados"}
+                  </Text>
+                  {filteredAll.length === 0 && (
+                    <Text className="mt-2 text-neutral-500 dark:text-neutral-400">
+                      No hay resultados para este filtro.
+                    </Text>
+                  )}
+                </View>
+                <ProductCarousel
+                  items={filteredAll}
+                  className="mt-3"
+                  cardWidth={160}
+                />
+              </>
+            ) : (
+              <>
+                <View className="px-5 pt-4">
+                  <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+                    Today selection
+                  </Text>
+                </View>
+                <ProductCarousel
+                  items={filteredToday}
+                  className="mt-3"
+                  cardWidth={160}
+                />
 
-            <View className="px-5 mt-6 mb-4">
-              <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-                Recommended for you
-              </Text>
-            </View>
-            <ProductCarousel items={filteredRecommended} className="mt-3" cardWidth={160} />
-          </>
-        )}
-      </ScrollView>
+                <View className="px-5 mt-6">
+                  <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+                    Popular for the home
+                  </Text>
+                </View>
+                <ProductCarousel
+                  items={filteredPopular}
+                  className="mt-3"
+                  cardWidth={160}
+                />
+
+                <View className="px-5 mt-6 mb-4">
+                  <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+                    Recommended for you
+                  </Text>
+                </View>
+                <ProductCarousel
+                  items={filteredRecommended}
+                  className="mt-3"
+                  cardWidth={160}
+                />
+              </>
+            )}
+          </ScrollView>
+        </>
+      )}
     </View>
   );
 }
