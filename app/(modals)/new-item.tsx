@@ -133,27 +133,37 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
   const uploadToSupabase = async (userId: string) => {
     const uploads = await Promise.all(
       images.map(async (img, i) => {
-        const res = await fetch(img.uri);
-        const ab = await res.arrayBuffer();
+        const res: any = await fetch(img.uri);
+        const ab: ArrayBuffer =
+          typeof res.arrayBuffer === "function"
+            ? await res.arrayBuffer()
+            : await res.blob().then((b: any) => b.arrayBuffer());
+        const bytes = new Uint8Array(ab);
+        const guessFromUri = () => {
+          const q = img.uri.split("?")[0];
+          const ext = (q.split(".").pop() || "").toLowerCase();
+          if (["jpg", "jpeg"].includes(ext)) return "image/jpeg";
+          if (ext === "png") return "image/png";
+          if (ext === "webp") return "image/webp";
+          return "application/octet-stream";
+        };
         const contentType =
-          img.mimeType && img.mimeType !== "" ? img.mimeType : "image/jpeg";
-        const ext = contentType.split("/")[1] || "jpg";
+          img.mimeType && img.mimeType !== "" ? img.mimeType : guessFromUri();
+        const ext = (contentType.split("/")[1] || "jpg").toLowerCase();
         const base =
           img.fileName?.replace(/\s+/g, "_").replace(/[^\w\.-]/g, "") ||
           `photo_${i}.${ext}`;
         const filename = base.includes(".") ? base : `${base}.${ext}`;
         const path = `${userId}/${Date.now()}_${i}_${filename}`;
-
         const { error } = await supabase.storage
           .from("items")
-          .upload(path, ab, {
+          .upload(path, bytes, {
             contentType,
             cacheControl: "3600",
             upsert: false,
           });
         if (error)
           throw new Error(`Error subiendo ${filename}: ${error.message}`);
-
         const { data } = supabase.storage.from("items").getPublicUrl(path);
         return { url: data.publicUrl as string, contentType, filename };
       })
@@ -170,25 +180,27 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
   const onlyInt = (s: string) => s.replace(/[^\d]/g, "");
 
   const submit = async () => {
-    if (!title.trim())
-      return Alert.alert("Falta título", "Agrega un título para tu artículo.");
+    if (loading) return;
+    if (!title.trim()) {
+      Alert.alert("Falta título", "Agrega un título para tu artículo.");
+      return;
+    }
     const priceNum = Number(price);
     if (!price || isNaN(priceNum) || priceNum <= 0) {
-      return Alert.alert("Precio inválido", "Ingresa un número mayor a 0.");
+      Alert.alert("Precio inválido", "Ingresa un número mayor a 0.");
+      return;
     }
-
     const qty = Math.max(1, parseInt(onlyInt(periodQty || "1"), 10));
-
     if (
       deliveryMode === "entrega" &&
       (!tarifaEntrega || Number(tarifaEntrega) < 0)
     ) {
-      return Alert.alert("Tarifa de entrega", "Agrega una tarifa válida.");
+      Alert.alert("Tarifa de entrega", "Agrega una tarifa válida.");
+      return;
     }
 
     try {
       setLoading(true);
-
       const { data: authData, error: userErr } = await supabase.auth.getUser();
       if (userErr || !authData.user) throw new Error("No hay sesión activa.");
       const userId = authData.user.id;
@@ -198,7 +210,10 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
 
       const unidad = mapPeriodToUnidad(period);
       const precioPorUnidad = +(priceNum / qty).toFixed(2);
-      const idCategoria = null;
+      const idCategoria =
+        category && !isNaN(parseInt(category.key, 10))
+          ? parseInt(category.key, 10)
+          : null;
 
       const { data: inserted, error: insertErr } = await supabase
         .from("articulos")
@@ -272,6 +287,24 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
           : "Tu borrador se guardó correctamente."
       );
       onClose();
+      setTitle("");
+      setPrice("");
+      setPeriod("day");
+      setPeriodQty("1");
+      setCurrency("USD");
+      setCategory(null);
+      setDesc("");
+      setEstadoArticulo("como_nuevo");
+      setEstadoPublicacion("publicado");
+      setValorReposicion("");
+      setDepositoSeguridad("");
+      setDuracionMinHoras("");
+      setDuracionMaxDias("");
+      setCantidadDisponible("1");
+      setDeliveryMode("retiro");
+      setTarifaEntrega("");
+      setLongitud("");
+      setImages([]);
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "No se pudo publicar.");
     } finally {
