@@ -1,7 +1,9 @@
 // app/cart/index.tsx
 import { Feather } from "@expo/vector-icons";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -9,50 +11,34 @@ import {
   View,
   useColorScheme,
 } from "react-native";
+import { supabase } from "../../utils/supabase";
 
+/* ---------- Tipos UI ---------- */
+type DeliveryMethod = "Envio" | "Pickup" | "Entrega";
 type Item = {
-  id: string;
-  title: string;
-  price: number;
-  image: string;
-  available?: boolean;
-  method?: "Envio" | "Pickup" | "Entrega";
-  qty?: number;
+  id: string; // cart_items.id
+  title: string; // titulo_cached
+  price: number; // numeric (pesos)
+  image: string; // image_url
+  available?: boolean; // disponible
+  method?: DeliveryMethod;
+  qty?: number; // número de periodos
 };
 
-const initialCart: Item[] = [
-  {
-    id: "spk-1",
-    title: "Descripcion del producto larga o corta",
-    price: 900,
-    image: "https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=800",
-    available: true,
-    method: "Envio",
-    qty: 1,
-  },
-  {
-    id: "spk-2",
-    title: "Descripcion del producto larga o corta",
-    price: 900,
-    image: "https://images.unsplash.com/photo-1598327105666-5b89351aff97?w=800",
-    available: true,
-    method: "Envio",
-    qty: 1,
-  },
-];
+/* ---------- Tipos DB mínimos ---------- */
+type CartRow = {
+  id: string;
+  id_perfil: string;
+  status: "active" | "ordered" | "abandoned" | "canceled";
+};
+type CartTotalsRow = {
+  id_carrito: string;
+  id_perfil: string;
+  subtotal: number;
+  items_count: number;
+};
 
-const initialSaved: Item[] = [
-  {
-    id: "spk-3",
-    title: "Descripcion del producto larga o corta",
-    price: 900,
-    image: "https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=800",
-    available: true,
-    method: "Envio",
-    qty: 1,
-  },
-];
-
+/* ---------- Colores ---------- */
 function useColors() {
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
@@ -71,6 +57,47 @@ function useColors() {
     }),
     [isDark]
   );
+}
+
+/* ---------- Helpers Supabase ---------- */
+async function getCurrentPerfilId(): Promise<string | null> {
+  // Asumimos perfiles.id == auth.user.id. Si no, resuelve aquí con email ↔ perfiles.
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return data.user?.id ?? null;
+}
+
+async function getOrCreateActiveCart(id_perfil: string): Promise<CartRow> {
+  const found = await supabase
+    .from("carts")
+    .select("*")
+    .eq("id_perfil", id_perfil)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (found.error && found.error.code !== "PGRST116") throw found.error;
+  if (found.data) return found.data as CartRow;
+
+  const ins = await supabase
+    .from("carts")
+    .insert({ id_perfil, status: "active" })
+    .select("*")
+    .single();
+
+  if (ins.error) throw ins.error;
+  return ins.data as CartRow;
+}
+
+function rowToUI(row: any): Item {
+  return {
+    id: row.id,
+    title: row.titulo_cached,
+    price: Number(row.precio),
+    image: row.image_url ?? "",
+    available: !!row.disponible,
+    method: row.metodo as DeliveryMethod,
+    qty: Number(row.qty ?? 1),
+  };
 }
 
 /* ---------- Componente de control de cantidad ---------- */
@@ -291,25 +318,130 @@ function SavedCard({
 /* ---------- Pantalla principal ---------- */
 export default function ShoppingCartScreen() {
   const C = useColors();
-  const [cart, setCart] = useState<Item[]>(initialCart);
-  const [saved, setSaved] = useState<Item[]>(initialSaved);
 
-  const setQty = (id: string, qty: number) =>
+  const [loading, setLoading] = useState(true);
+  const [cartId, setCartId] = useState<string | null>(null);
+  const [cart, setCart] = useState<Item[]>([]);
+  const [saved, setSaved] = useState<Item[]>([]); // local por ahora
+  const [subtotal, setSubtotal] = useState(0);
+
+  /* ---- Cargar carrito desde Supabase ---- */
+  useEffect(() => {
+    (async () => {
+      try {
+        const perfilId = await getCurrentPerfilId();
+        if (!perfilId) {
+          setLoading(false);
+          return;
+        }
+
+        const cartRow = await getOrCreateActiveCart(perfilId);
+        setCartId(cartRow.id);
+
+        // Carga items por id_carrito
+        const itemsRes = await supabase
+          .from("cart_items")
+          .select(
+            `
+            id,
+            id_carrito,
+            id_articulo,
+            titulo_cached,
+            image_url,
+            precio,
+            unidad,
+            periodo_cantidad,
+            qty,
+            metodo,
+            tarifa_entrega,
+            disponible
+          `
+          )
+          .eq("id_carrito", cartRow.id);
+
+        const totalsRes = await supabase
+          .from("cart_totals")
+          .select("*")
+          .eq("id_carrito", cartRow.id)
+          .maybeSingle();
+
+        if (itemsRes.error) throw itemsRes.error;
+        if (totalsRes.error && totalsRes.error.code !== "PGRST116")
+          throw totalsRes.error;
+
+        const rows = (itemsRes.data ?? []) as any[];
+        setCart(rows.map(rowToUI));
+
+        const total = Number(
+          (totalsRes.data as CartTotalsRow | null)?.subtotal ?? 0
+        );
+        setSubtotal(total);
+      } catch (e: any) {
+        Alert.alert("Error", e?.message ?? "No se pudo cargar el carrito");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  /* ---- Handlers conectados a BD ---- */
+
+  const setQty = async (id: string, qty: number) => {
+    // UI optimista
     setCart((prev) => prev.map((it) => (it.id === id ? { ...it, qty } : it)));
-  const removeFromCart = (id: string) =>
+    setSubtotal((prev) => {
+      const item = cart.find((x) => x.id === id);
+      if (!item) return prev;
+      const old = (item.qty || 1) * item.price;
+      const neu = qty * item.price;
+      return +(prev - old + neu);
+    });
+    // Persistencia
+    const { error } = await supabase
+      .from("cart_items")
+      .update({ qty })
+      .eq("id", id);
+    if (error) Alert.alert("Error", "No se pudo actualizar la cantidad");
+  };
+
+  const removeFromCart = async (id: string) => {
+    const item = cart.find((x) => x.id === id);
+    // Optimista
     setCart((prev) => prev.filter((it) => it.id !== id));
+    if (item) setSubtotal((p) => +(p - item.price * (item.qty || 1)));
+    // Persistencia
+    const { error } = await supabase.from("cart_items").delete().eq("id", id);
+    if (error) Alert.alert("Error", "No se pudo eliminar el artículo");
+  };
+
+  // “Guardar para después” local (si quieres persistir, te creo saved_items)
   const saveForLater = (it: Item) => {
     setCart((prev) => prev.filter((x) => x.id !== it.id));
     setSaved((prev) => [it, ...prev]);
+    setSubtotal((p) => +(p - it.price * (it.qty || 1)));
   };
+
   const moveToCart = (it: Item) => {
     setSaved((prev) => prev.filter((x) => x.id !== it.id));
     setCart((prev) => [it, ...prev]);
+    setSubtotal((p) => +(p + it.price * (it.qty || 1)));
   };
+
   const removeFromSaved = (id: string) =>
     setSaved((prev) => prev.filter((it) => it.id !== id));
 
-  const subtotal = cart.reduce((acc, it) => acc + it.price * (it.qty || 1), 0);
+  if (loading) {
+    return (
+      <View className="flex-1 items-center justify-center">
+        <ActivityIndicator />
+        <Text style={{ marginTop: 8 }}>Cargando carrito…</Text>
+      </View>
+    );
+  }
+
+  const subtotalFixed = Number.isFinite(subtotal)
+    ? subtotal.toFixed(2)
+    : "0.00";
 
   return (
     <View className="flex-1 mt-10" style={{ backgroundColor: C.bg }}>
@@ -342,7 +474,7 @@ export default function ShoppingCartScreen() {
               Subtotal
             </Text>
             <Text className="text-lg font-bold" style={{ color: C.text }}>
-              ${subtotal.toFixed(2)}
+              ${subtotalFixed}
             </Text>
           </View>
           <Pressable
