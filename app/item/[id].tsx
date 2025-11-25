@@ -17,6 +17,7 @@ import Button from "../../components/ui/button";
 
 /* ----------------- Tipos ----------------- */
 type UnidadPrecio = "hora" | "dia" | "semana";
+
 type Articulo = {
   id: number;
   titulo: string;
@@ -26,27 +27,26 @@ type Articulo = {
   periodo_cantidad: number | null;
   url_publica: string | null;
   id_propietario: string | null;
-  estado_articulo: string | null;     // ← enum en DB
-  estado_publicacion: string | null;  // ← enum en DB
-};
-type ReviewAgg = { avg: number; count: number };
-type OwnerProfile = {
-  nombre?: string | null;
-  full_name?: string | null;
-  username?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  avatar_url?: string | null;
+  estado_articulo: string | null;
+  estado_publicacion: string | null;
+  solo_retiro: boolean | null;
+  entrega_disponible: boolean | null;
+  tarifa_entrega: number | null;
 };
 
+type ReviewAgg = { avg: number; count: number };
+
+type CartStatus = "active" | "pending" | "completed" | "cancelled"; // ajusta si tu enum tiene otros
+type DeliveryMethod = "Envio" | "Pickup" | "Entrega";
+
 const { width: W } = Dimensions.get("window");
+
 const unitLabel = {
   hora: { sing: "hour", plural: "hours" },
   dia: { sing: "day", plural: "days" },
   semana: { sing: "week", plural: "weeks" },
 } as const;
 
-/* ----------------- Stars ----------------- */
 function Stars({ value, size = 14 }: { value: number; size?: number }) {
   const full = Math.floor(value);
   const hasHalf = value - full >= 0.5;
@@ -68,21 +68,38 @@ function Stars({ value, size = 14 }: { value: number; size?: number }) {
   );
 }
 
+/* Helper: obtener o crear carrito ACTIVE para el perfil */
+const getOrCreateCartId = async (perfilId: string): Promise<string> => {
+  // Buscar carrito ACTIVE existente
+  const { data: existing, error: existingErr } = await supabase
+    .from("carts")
+    .select("id")
+    .eq("id_perfil", perfilId)
+    .eq("status", "active" as CartStatus)
+    .maybeSingle<{ id: string }>();
+
+  if (existingErr) throw existingErr;
+  if (existing?.id) return existing.id;
+
+  // Crear carrito ACTIVE si no existe
+  const { data: inserted, error: insertErr } = await supabase
+    .from("carts")
+    .insert({ id_perfil: perfilId, status: "active" as CartStatus })
+    .select("id")
+    .single<{ id: string }>();
+
+  if (insertErr) throw insertErr;
+  return inserted.id;
+};
+
 export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
 
-  // Paleta base (tu instrucción global + extras)
   const COLORS = useMemo(
     () => ({
-      pill: isDark ? "#27272a" : "#f3f4f6",
-      icon: isDark ? "#e5e7eb" : "#111827",
-      iconMuted: isDark ? "#a1a1aa" : "#6b7280",
-      ring: isDark ? "#3f3f46" : "#e5e7eb",
-      overlay: "rgba(0,0,0,0.30)",
-
       bg: isDark ? "#0b0b0c" : "#ffffff",
       text: isDark ? "#fafafa" : "#111827",
       subtext: isDark ? "#a1a1aa" : "#6b7280",
@@ -90,106 +107,84 @@ export default function ItemDetail() {
       card: isDark ? "#18181b" : "#ffffff",
       accent: "#2563eb",
       gold: "#F59E0B",
-
-      // chips
-      chipBg: isDark ? "#1f2937" : "#f3f4f6",
-      chipText: isDark ? "#e5e7eb" : "#111827",
-      chipBorder: isDark ? "#374151" : "#e5e7eb",
     }),
     [isDark]
   );
 
   const [item, setItem] = useState<Articulo | null>(null);
   const [rating, setRating] = useState<ReviewAgg>({ avg: 0, count: 0 });
-  const [owner, setOwner] = useState<{ displayName: string; avatar?: string | null }>({
-    displayName: "",
+  const [owner, setOwner] = useState<{ nombre: string; avatar?: string | null }>({
+    nombre: "Usuario",
     avatar: null,
   });
   const [loading, setLoading] = useState(true);
-
-  const pickDisplayName = (p?: OwnerProfile | null): string => {
-    if (!p) return "";
-    if (p.nombre?.trim()) return p.nombre!;
-    if (p.full_name?.trim()) return p.full_name!;
-    if (p.username?.trim()) return p.username!;
-    const fn = p.first_name?.trim() ?? "";
-    const ln = p.last_name?.trim() ?? "";
-    const combo = [fn, ln].filter(Boolean).join(" ");
-    return combo || "Usuario";
-  };
-
-  // Mapeo de estilos para los estados
-  const statusStyles = useMemo(() => {
-    // Ajusta keys a tus enums exactos si difieren
-    const bg = (hex: string) => (isDark ? hex + "20" : hex + "18"); // leve transparencia
-    return {
-      articulo: {
-        disponible: { label: "Available",   bg: bg("#10b981"), border: "#10b981", text: "#065f46" },
-        mantenimiento: { label: "Maintenance", bg: bg("#f59e0b"), border: "#f59e0b", text: "#92400e" },
-        ocupado: { label: "In use",       bg: bg("#ef4444"), border: "#ef4444", text: "#7f1d1d" },
-        // fallback
-        default: { label: "Unknown",      bg: COLORS.chipBg, border: COLORS.chipBorder, text: COLORS.chipText },
-      },
-      publicacion: {
-        publicado: { label: "Published",  bg: bg("#3b82f6"), border: "#3b82f6", text: "#1e40af" },
-        pausado:   { label: "Paused",     bg: bg("#f59e0b"), border: "#f59e0b", text: "#92400e" },
-        borrador:  { label: "Draft",      bg: bg("#9ca3af"), border: "#9ca3af", text: "#374151" },
-        default:   { label: "Unknown",    bg: COLORS.chipBg, border: COLORS.chipBorder, text: COLORS.chipText },
-      },
-    };
-  }, [COLORS, isDark]);
+  const [addingToCart, setAddingToCart] = useState(false);
 
   const fetchAll = useCallback(async () => {
     if (!id) return;
     try {
       setLoading(true);
 
-      // Artículo (incluye estados)
+      // 1) Artículo
       const { data: art, error: artErr } = await supabase
         .from("articulos")
         .select(
-          "id, titulo, descripcion, precio, unidad_precio, periodo_cantidad, url_publica, id_propietario, estado_articulo, estado_publicacion"
+          [
+            "id",
+            "titulo",
+            "descripcion",
+            "precio",
+            "unidad_precio",
+            "periodo_cantidad",
+            "url_publica",
+            "id_propietario",
+            "estado_articulo",
+            "estado_publicacion",
+            "solo_retiro",
+            "entrega_disponible",
+            "tarifa_entrega",
+          ].join(", ")
         )
         .eq("id", Number(id))
-        .maybeSingle();
+        .maybeSingle<Articulo>();
+
       if (artErr) throw artErr;
       if (!art) {
-        Alert.alert("Not found", "Este artículo no existe o fue removido.");
-        setItem(null);
+        Alert.alert("No encontrado", "El artículo no existe o fue eliminado.");
         return;
       }
-      const article = art as Articulo;
-      setItem(article);
 
-      // Propietario
-      if (article.id_propietario) {
-        const { data: prof, error: profErr } = await supabase
+      setItem(art);
+
+      // 2) Perfil del propietario
+      if (art.id_propietario) {
+        const { data: perfil, error: perfilErr } = await supabase
           .from("perfiles")
           .select("nombre, avatar_url")
-          .eq("id", article.id_propietario)
+          .eq("id", art.id_propietario)
           .maybeSingle();
-        if (profErr) throw profErr;
+
+        if (perfilErr) throw perfilErr;
 
         setOwner({
-          displayName: pickDisplayName(prof as OwnerProfile),
-          avatar: (prof as OwnerProfile)?.avatar_url ?? null,
+          nombre: (perfil as any)?.nombre ?? "Usuario",
+          avatar: (perfil as any)?.avatar_url ?? null,
         });
-      } else {
-        setOwner({ displayName: "Usuario", avatar: null });
       }
 
-      // Reseñas
-      const { data: rows, error: rErr } = await supabase
+      // 3) Reseñas
+      const { data: reseñas, error: rErr } = await supabase
         .from("reseñas")
         .select("calificacion")
         .eq("id_articulo", Number(id));
+
       if (rErr) throw rErr;
 
-      const nums = (rows ?? []).map((r: any) => Number(r.calificacion)).filter((n) => !isNaN(n));
+      const nums = (reseñas ?? []).map((r: any) => Number(r.calificacion)).filter((n) => !isNaN(n));
       const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
       setRating({ avg, count: nums.length });
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo cargar la información.");
+      Alert.alert("Error", e?.message ?? "No se pudo cargar el artículo.");
     } finally {
       setLoading(false);
     }
@@ -207,23 +202,87 @@ export default function ItemDetail() {
     const money = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(
       item.precio
     );
-    return `${money} for ${qty} ${unit}`;
+    return `${money} por ${qty} ${unit}`;
   }, [item]);
 
   const hero = item?.url_publica || `https://picsum.photos/seed/${id}/1200/900`;
 
-  // Helpers para pintar chips
-  const chipForArticulo = (() => {
-    const key = (item?.estado_articulo || "").toLowerCase();
-    const map = statusStyles.articulo as any;
-    return map[key] ?? map.default;
-  })();
+  const estadoArticuloColor =
+    item?.estado_articulo === "disponible"
+      ? "#10b981"
+      : item?.estado_articulo === "mantenimiento"
+      ? "#f59e0b"
+      : "#ef4444";
 
-  const chipForPublicacion = (() => {
-    const key = (item?.estado_publicacion || "").toLowerCase();
-    const map = statusStyles.publicacion as any;
-    return map[key] ?? map.default;
-  })();
+  const estadoPublicacionColor =
+    item?.estado_publicacion === "publicado"
+      ? "#2563eb"
+      : item?.estado_publicacion === "pausado"
+      ? "#f59e0b"
+      : "#9ca3af";
+
+  /* ----------------- Reservar → agregar a cart_items ----------------- */
+  const handleReserve = async () => {
+    if (!item) return;
+
+    try {
+      setAddingToCart(true);
+
+      // 1) Usuario actual
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !authData?.user) {
+        Alert.alert("Inicia sesión", "Necesitas iniciar sesión para agregar al carrito.", [
+          { text: "Ir a login", onPress: () => router.push("/auth/login") },
+        ]);
+        return;
+      }
+
+      const perfilId = authData.user.id;
+
+      // 2) Asegurar carrito ACTIVE
+      const cartId = await getOrCreateCartId(perfilId);
+
+      // 3) Definir periodo y método (mismo criterio que tu SQL)
+      const periodo_cantidad = Math.max(1, item.periodo_cantidad ?? 1);
+
+      const metodo: DeliveryMethod =
+        item.solo_retiro
+          ? "Pickup"
+          : item.entrega_disponible
+          ? "Envio"
+          : "Entrega";
+
+      // 4) Insert en cart_items
+      const { error: insertErr } = await supabase.from("cart_items").insert({
+        id_carrito: cartId,
+        id_articulo: item.id,
+        titulo_cached: item.titulo,
+        image_url: item.url_publica,
+        precio: item.precio,
+        unidad: item.unidad_precio,
+        periodo_cantidad,
+        qty: 1,
+        metodo,
+        tarifa_entrega: item.tarifa_entrega ?? 0,
+        solo_retiro: item.solo_retiro ?? false,
+        entrega_disponible: item.entrega_disponible ?? false,
+        disponible: true,
+      });
+
+      if (insertErr) {
+        console.log("Cart insert error:", JSON.stringify(insertErr, null, 2));
+        throw insertErr;
+      }
+
+      Alert.alert("Añadido al carrito", "El artículo se agregó a tu carrito.");
+      // Si quieres redirigir al carrito:
+      // router.push("/cart");
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "No se pudo agregar al carrito.");
+    } finally {
+      setAddingToCart(false);
+    }
+  };
 
   return (
     <View className="flex-1" style={{ backgroundColor: COLORS.bg }}>
@@ -231,44 +290,63 @@ export default function ItemDetail() {
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {/* HERO */}
         <View>
-          <Image source={{ uri: hero }} style={{ width: W, height: 240 }} />
-       
+          <Image source={{ uri: hero }} style={{ width: W, height: 240, borderRadius: 20 }} />
+          
         </View>
 
         {/* CARD */}
-        <View className="px-4 -mt-8">
+        <View className="w-full mt-2">
           <View
             className="rounded-3xl px-5 pb-6 pt-5 shadow-sm"
             style={{ backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }}
           >
             {/* Título */}
-            <Text className="text-center text-xl font-semibold" style={{ color: COLORS.text }} numberOfLines={2}>
-              {item?.titulo ?? " "}
+            <Text
+              className="text-center text-xl font-semibold"
+              style={{ color: COLORS.text }}
+              numberOfLines={2}
+            >
+              {item?.titulo ?? ""}
             </Text>
 
-            {/* Chips de estado */}
-            <View className="mt-3 flex-row items-center justify-center">
-              <View
-                className="px-3 py-1 rounded-full border mr-2"
-                style={{ backgroundColor: chipForArticulo.bg, borderColor: chipForArticulo.border }}
-              >
-                <Text className="text-xs font-medium" style={{ color: chipForArticulo.text }}>
-                  {chipForArticulo.label}
-                </Text>
-              </View>
-              <View
-                className="px-3 py-1 rounded-full border"
-                style={{ backgroundColor: chipForPublicacion.bg, borderColor: chipForPublicacion.border }}
-              >
-                <Text className="text-xs font-medium" style={{ color: chipForPublicacion.text }}>
-                  {chipForPublicacion.label}
-                </Text>
-              </View>
+            {/* Estados */}
+            <View className="mt-3 flex-row justify-center gap-2">
+              {item?.estado_articulo && (
+                <View
+                  className="px-3 py-1 rounded-full border"
+                  style={{
+                    borderColor: estadoArticuloColor,
+                    backgroundColor: estadoArticuloColor + "22",
+                  }}
+                >
+                  <Text className="text-xs font-medium" style={{ color: estadoArticuloColor }}>
+                    {item.estado_articulo}
+                  </Text>
+                </View>
+              )}
+
+              {item?.estado_publicacion && (
+                <View
+                  className="px-3 py-1 rounded-full border"
+                  style={{
+                    borderColor: estadoPublicacionColor,
+                    backgroundColor: estadoPublicacionColor + "22",
+                  }}
+                >
+                  <Text className="text-xs font-medium" style={{ color: estadoPublicacionColor }}>
+                    {item.estado_publicacion}
+                  </Text>
+                </View>
+              )}
             </View>
 
-            {/* Descripción breve */}
+            {/* Descripción */}
             {item?.descripcion ? (
-              <Text className="mt-3 text-center leading-5" style={{ color: COLORS.subtext }} numberOfLines={3}>
+              <Text
+                className="mt-3 text-center leading-5"
+                style={{ color: COLORS.subtext }}
+                numberOfLines={3}
+              >
                 {item.descripcion}
               </Text>
             ) : null}
@@ -283,7 +361,10 @@ export default function ItemDetail() {
               </View>
 
               <View className="items-center">
-                <View className="w-14 h-14 rounded-full items-center justify-center" style={{ backgroundColor: isDark ? "#312e81" : "#fef3c7" }}>
+                <View
+                  className="w-14 h-14 rounded-full items-center justify-center"
+                  style={{ backgroundColor: isDark ? "#312e81" : "#fef3c7" }}
+                >
                   <Feather name="award" size={24} color={COLORS.gold} />
                 </View>
                 <Text className="text-xs mt-1" style={{ color: COLORS.subtext }}>
@@ -312,10 +393,10 @@ export default function ItemDetail() {
               />
               <View className="flex-1">
                 <Text className="text-sm font-medium" style={{ color: COLORS.text }}>
-                  {owner.displayName || "Usuario"}
+                  {owner.nombre}
                 </Text>
                 <Text className="text-xs" style={{ color: COLORS.subtext }}>
-                  some of our best · 3 years of experience
+                  Propietario verificado
                 </Text>
               </View>
             </View>
@@ -328,13 +409,13 @@ export default function ItemDetail() {
               <View className="flex-row items-start">
                 <Text className="mr-2">🏆</Text>
                 <Text style={{ color: COLORS.subtext }}>
-                  In the top 1% of highest-rated tools. Multiple rentals without complaints.
+                  En el top 1% de artículos mejor calificados.
                 </Text>
               </View>
               <View className="flex-row items-start">
                 <Text className="mr-2">🌟</Text>
                 <Text style={{ color: COLORS.subtext }}>
-                  A unique opportunity, this article is usually reserved.
+                  Este artículo suele estar reservado con frecuencia.
                 </Text>
               </View>
             </View>
@@ -357,16 +438,17 @@ export default function ItemDetail() {
             <View className="flex-row items-center mt-1">
               <Feather name="check-circle" color="#22c55e" size={14} />
               <Text className="text-xs ml-1" style={{ color: COLORS.subtext }}>
-                Free cancellation
+                Cancelación gratuita
               </Text>
             </View>
           </View>
 
           <View className="w-36">
             <Button
-              label="Reserve"
+              label={addingToCart ? "Agregando..." : "Reservar"}
               variant="primary"
-              onPress={() => Alert.alert("Reserved", "We’ll notify the owner 🚀")}
+              disabled={addingToCart || !item}
+              onPress={handleReserve}
             />
           </View>
         </View>
