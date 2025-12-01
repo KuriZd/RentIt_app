@@ -7,6 +7,7 @@ import {
   Alert,
   Dimensions,
   Image,
+  Pressable,
   ScrollView,
   StatusBar,
   Text,
@@ -36,7 +37,7 @@ type Articulo = {
 
 type ReviewAgg = { avg: number; count: number };
 
-type CartStatus = "active" | "pending" | "completed" | "cancelled"; // ajusta si tu enum tiene otros
+type CartStatus = "active" | "pending" | "completed" | "cancelled";
 type DeliveryMethod = "Envio" | "Pickup" | "Entrega";
 
 const { width: W } = Dimensions.get("window");
@@ -53,14 +54,18 @@ function Stars({ value, size = 14 }: { value: number; size?: number }) {
   return (
     <View className="flex-row items-center">
       {Array.from({ length: 5 }, (_, i) => {
-        const state = i < full ? "full" : i === full && hasHalf ? "half" : "empty";
+        const state =
+          i < full ? "full" : i === full && hasHalf ? "half" : "empty";
         return (
           <Feather
             key={i}
             name="star"
             size={size}
             color={state === "empty" ? "#D4D4D8" : "#F59E0B"}
-            style={{ marginRight: i < 4 ? 2 : 0, opacity: state === "half" ? 0.6 : 1 }}
+            style={{
+              marginRight: i < 4 ? 2 : 0,
+              opacity: state === "half" ? 0.6 : 1,
+            }}
           />
         );
       })}
@@ -68,9 +73,7 @@ function Stars({ value, size = 14 }: { value: number; size?: number }) {
   );
 }
 
-/* Helper: obtener o crear carrito ACTIVE para el perfil */
 const getOrCreateCartId = async (perfilId: string): Promise<string> => {
-  // Buscar carrito ACTIVE existente
   const { data: existing, error: existingErr } = await supabase
     .from("carts")
     .select("id")
@@ -81,7 +84,6 @@ const getOrCreateCartId = async (perfilId: string): Promise<string> => {
   if (existingErr) throw existingErr;
   if (existing?.id) return existing.id;
 
-  // Crear carrito ACTIVE si no existe
   const { data: inserted, error: insertErr } = await supabase
     .from("carts")
     .insert({ id_perfil: perfilId, status: "active" as CartStatus })
@@ -113,10 +115,12 @@ export default function ItemDetail() {
 
   const [item, setItem] = useState<Articulo | null>(null);
   const [rating, setRating] = useState<ReviewAgg>({ avg: 0, count: 0 });
-  const [owner, setOwner] = useState<{ nombre: string; avatar?: string | null }>({
-    nombre: "Usuario",
-    avatar: null,
-  });
+  const [owner, setOwner] = useState<{ nombre: string; avatar?: string | null }>(
+    {
+      nombre: "Usuario",
+      avatar: null,
+    }
+  );
   const [loading, setLoading] = useState(true);
   const [addingToCart, setAddingToCart] = useState(false);
 
@@ -125,7 +129,6 @@ export default function ItemDetail() {
     try {
       setLoading(true);
 
-      // 1) Artículo
       const { data: art, error: artErr } = await supabase
         .from("articulos")
         .select(
@@ -150,13 +153,15 @@ export default function ItemDetail() {
 
       if (artErr) throw artErr;
       if (!art) {
-        Alert.alert("No encontrado", "El artículo no existe o fue eliminado.");
+        Alert.alert(
+          "No encontrado",
+          "El artículo no existe o fue eliminado."
+        );
         return;
       }
 
       setItem(art);
 
-      // 2) Perfil del propietario
       if (art.id_propietario) {
         const { data: perfil, error: perfilErr } = await supabase
           .from("perfiles")
@@ -172,7 +177,6 @@ export default function ItemDetail() {
         });
       }
 
-      // 3) Reseñas
       const { data: reseñas, error: rErr } = await supabase
         .from("reseñas")
         .select("calificacion")
@@ -180,8 +184,12 @@ export default function ItemDetail() {
 
       if (rErr) throw rErr;
 
-      const nums = (reseñas ?? []).map((r: any) => Number(r.calificacion)).filter((n) => !isNaN(n));
-      const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+      const nums = (reseñas ?? [])
+        .map((r: any) => Number(r.calificacion))
+        .filter((n) => !isNaN(n));
+      const avg = nums.length
+        ? nums.reduce((a, b) => a + b, 0) / nums.length
+        : 0;
       setRating({ avg, count: nums.length });
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "No se pudo cargar el artículo.");
@@ -199,9 +207,10 @@ export default function ItemDetail() {
     const qty = Math.max(1, item.periodo_cantidad ?? 1);
     const u = unitLabel[item.unidad_precio] ?? unitLabel["dia"];
     const unit = qty === 1 ? u.sing : u.plural;
-    const money = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(
-      item.precio
-    );
+    const money = new Intl.NumberFormat("es-MX", {
+      style: "currency",
+      currency: "MXN",
+    }).format(item.precio);
     return `${money} por ${qty} ${unit}`;
   }, [item]);
 
@@ -221,38 +230,34 @@ export default function ItemDetail() {
       ? "#f59e0b"
       : "#9ca3af";
 
-  /* ----------------- Reservar → agregar a cart_items ----------------- */
   const handleReserve = async () => {
     if (!item) return;
 
     try {
       setAddingToCart(true);
 
-      // 1) Usuario actual
       const { data: authData, error: authErr } = await supabase.auth.getUser();
       if (authErr || !authData?.user) {
-        Alert.alert("Inicia sesión", "Necesitas iniciar sesión para agregar al carrito.", [
-          { text: "Ir a login", onPress: () => router.push("/auth/login") },
-        ]);
+        Alert.alert(
+          "Inicia sesión",
+          "Necesitas iniciar sesión para agregar al carrito.",
+          [{ text: "Ir a login", onPress: () => router.push("/auth/login") }]
+        );
         return;
       }
 
       const perfilId = authData.user.id;
 
-      // 2) Asegurar carrito ACTIVE
       const cartId = await getOrCreateCartId(perfilId);
 
-      // 3) Definir periodo y método (mismo criterio que tu SQL)
       const periodo_cantidad = Math.max(1, item.periodo_cantidad ?? 1);
 
-      const metodo: DeliveryMethod =
-        item.solo_retiro
-          ? "Pickup"
-          : item.entrega_disponible
-          ? "Envio"
-          : "Entrega";
+      const metodo: DeliveryMethod = item.solo_retiro
+        ? "Pickup"
+        : item.entrega_disponible
+        ? "Envio"
+        : "Entrega";
 
-      // 4) Insert en cart_items
       const { error: insertErr } = await supabase.from("cart_items").insert({
         id_carrito: cartId,
         id_articulo: item.id,
@@ -275,8 +280,6 @@ export default function ItemDetail() {
       }
 
       Alert.alert("Añadido al carrito", "El artículo se agregó a tu carrito.");
-      // Si quieres redirigir al carrito:
-      // router.push("/cart");
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "No se pudo agregar al carrito.");
     } finally {
@@ -288,19 +291,22 @@ export default function ItemDetail() {
     <View className="flex-1" style={{ backgroundColor: COLORS.bg }}>
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        {/* HERO */}
         <View>
-          <Image source={{ uri: hero }} style={{ width: W, height: 240, borderRadius: 20 }} />
-          
+          <Image
+            source={{ uri: hero }}
+            style={{ width: W, height: 240, borderRadius: 20 }}
+          />
         </View>
 
-        {/* CARD */}
         <View className="w-full mt-2">
           <View
             className="rounded-3xl px-5 pb-6 pt-5 shadow-sm"
-            style={{ backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }}
+            style={{
+              backgroundColor: COLORS.card,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+            }}
           >
-            {/* Título */}
             <Text
               className="text-center text-xl font-semibold"
               style={{ color: COLORS.text }}
@@ -309,7 +315,6 @@ export default function ItemDetail() {
               {item?.titulo ?? ""}
             </Text>
 
-            {/* Estados */}
             <View className="mt-3 flex-row justify-center gap-2">
               {item?.estado_articulo && (
                 <View
@@ -319,7 +324,10 @@ export default function ItemDetail() {
                     backgroundColor: estadoArticuloColor + "22",
                   }}
                 >
-                  <Text className="text-xs font-medium" style={{ color: estadoArticuloColor }}>
+                  <Text
+                    className="text-xs font-medium"
+                    style={{ color: estadoArticuloColor }}
+                  >
                     {item.estado_articulo}
                   </Text>
                 </View>
@@ -333,14 +341,16 @@ export default function ItemDetail() {
                     backgroundColor: estadoPublicacionColor + "22",
                   }}
                 >
-                  <Text className="text-xs font-medium" style={{ color: estadoPublicacionColor }}>
+                  <Text
+                    className="text-xs font-medium"
+                    style={{ color: estadoPublicacionColor }}
+                  >
                     {item.estado_publicacion}
                   </Text>
                 </View>
               )}
             </View>
 
-            {/* Descripción */}
             {item?.descripcion ? (
               <Text
                 className="mt-3 text-center leading-5"
@@ -351,10 +361,12 @@ export default function ItemDetail() {
               </Text>
             ) : null}
 
-            {/* Métricas */}
             <View className="flex-row items-center justify-between mt-5">
               <View className="items-center">
-                <Text className="text-lg font-semibold" style={{ color: COLORS.text }}>
+                <Text
+                  className="text-lg font-semibold"
+                  style={{ color: COLORS.text }}
+                >
                   {rating.count ? rating.avg.toFixed(2) : "—"}
                 </Text>
                 <Stars value={rating.avg} />
@@ -367,13 +379,19 @@ export default function ItemDetail() {
                 >
                   <Feather name="award" size={24} color={COLORS.gold} />
                 </View>
-                <Text className="text-xs mt-1" style={{ color: COLORS.subtext }}>
+                <Text
+                  className="text-xs mt-1"
+                  style={{ color: COLORS.subtext }}
+                >
                   Top rated
                 </Text>
               </View>
 
               <View className="items-center">
-                <Text className="text-lg font-semibold" style={{ color: COLORS.text }}>
+                <Text
+                  className="text-lg font-semibold"
+                  style={{ color: COLORS.text }}
+                >
                   {rating.count}
                 </Text>
                 <Text className="text-xs" style={{ color: COLORS.subtext }}>
@@ -382,17 +400,23 @@ export default function ItemDetail() {
               </View>
             </View>
 
-            {/* Divider */}
-            <View className="my-5 h-px" style={{ backgroundColor: COLORS.border }} />
+            <View
+              className="my-5 h-px"
+              style={{ backgroundColor: COLORS.border }}
+            />
 
-            {/* Propietario */}
             <View className="flex-row items-center">
               <Image
-                source={{ uri: owner.avatar || "https://i.pravatar.cc/80?img=12" }}
+                source={{
+                  uri: owner.avatar || "https://i.pravatar.cc/80?img=12",
+                }}
                 className="w-10 h-10 rounded-full mr-3"
               />
               <View className="flex-1">
-                <Text className="text-sm font-medium" style={{ color: COLORS.text }}>
+                <Text
+                  className="text-sm font-medium"
+                  style={{ color: COLORS.text }}
+                >
                   {owner.nombre}
                 </Text>
                 <Text className="text-xs" style={{ color: COLORS.subtext }}>
@@ -401,10 +425,11 @@ export default function ItemDetail() {
               </View>
             </View>
 
-            {/* Divider */}
-            <View className="my-5 h-px" style={{ backgroundColor: COLORS.border }} />
+            <View
+              className="my-5 h-px"
+              style={{ backgroundColor: COLORS.border }}
+            />
 
-            {/* Highlights */}
             <View className="gap-3">
               <View className="flex-row items-start">
                 <Text className="mr-2">🏆</Text>
@@ -422,13 +447,131 @@ export default function ItemDetail() {
           </View>
         </View>
 
+        {rating.count > 0 && (
+          <View className="px-5 mt-5">
+            <View
+              className="rounded-3xl px-5 py-6 items-center"
+              style={{
+                backgroundColor: isDark ? "#020617" : "#f9fafb",
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
+            >
+              <View className="flex-row items-center mb-2">
+                <Feather
+                  name="award"
+                  size={20}
+                  color={COLORS.gold}
+                  style={{ marginRight: 6 }}
+                />
+                <Text
+                  className="text-3xl font-semibold"
+                  style={{ color: COLORS.text }}
+                >
+                  {rating.avg.toFixed(1)}
+                </Text>
+                <Feather
+                  name="award"
+                  size={20}
+                  color={COLORS.gold}
+                  style={{ marginLeft: 6 }}
+                />
+              </View>
+
+              <Text
+                className="text-base font-semibold"
+                style={{ color: COLORS.text }}
+              >
+                Favorito entre arrendatarios
+              </Text>
+
+              <Text
+                className="mt-2 text-xs text-center leading-4"
+                style={{ color: COLORS.subtext }}
+              >
+                Este artículo está dentro del 5% de los mejor calificados entre
+                los anuncios que cumplen con los requisitos, con base en las
+                calificaciones, las evaluaciones y la confiabilidad.
+              </Text>
+
+              <View
+                className="w-full mt-5"
+                style={{
+                  borderTopColor: COLORS.border,
+                  borderTopWidth: 1,
+                  paddingTop: 16,
+                }}
+              >
+                <View className="flex-row items-center mb-2">
+                  <Stars value={5} size={13} />
+                  <Text
+                    className="text-[11px] ml-2"
+                    style={{ color: COLORS.subtext }}
+                  >
+                    Hace 1 mes
+                  </Text>
+                </View>
+
+                <Text
+                  className="text-sm mb-3"
+                  style={{ color: COLORS.text }}
+                >
+                  Muy buen lugar, tranquilo, agradable y atención
+                  personalizada.
+                </Text>
+
+                <View className="flex-row items-center">
+                  <Image
+                    source={{
+                      uri: "https://i.pravatar.cc/80?img=32",
+                    }}
+                    className="w-9 h-9 rounded-full mr-2"
+                  />
+                  <View>
+                    <Text
+                      className="text-sm font-medium"
+                      style={{ color: COLORS.text }}
+                    >
+                      Juan Esteban
+                    </Text>
+                    <Text
+                      className="text-xs"
+                      style={{ color: COLORS.subtext }}
+                    >
+                      Puebla, México
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              <Pressable
+                className="mt-5 w-full rounded-2xl py-3 items-center justify-center"
+                style={{
+                  backgroundColor: isDark ? "#18181b" : "#f3f4f6",
+                }}
+                onPress={() => {}}
+              >
+                <Text
+                  className="text-sm font-semibold"
+                  style={{ color: COLORS.text }}
+                >
+                  {`Mostrar las ${rating.count} evaluaciones`}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
         <View style={{ height: 110 }} />
       </ScrollView>
 
-      {/* CTA inferior */}
       <View
         className="absolute left-0 right-0 bottom-0 px-4 pt-3 pb-4"
-        style={{ backgroundColor: COLORS.bg, borderTopWidth: 1, borderTopColor: COLORS.border }}
+        style={{
+          backgroundColor: COLORS.bg,
+          borderTopWidth: 1,
+          borderTopColor: COLORS.border,
+        }}
       >
         <View className="flex-row items-center justify-between">
           <View className="flex-1 mr-3">
@@ -437,7 +580,10 @@ export default function ItemDetail() {
             </Text>
             <View className="flex-row items-center mt-1">
               <Feather name="check-circle" color="#22c55e" size={14} />
-              <Text className="text-xs ml-1" style={{ color: COLORS.subtext }}>
+              <Text
+                className="text-xs ml-1"
+                style={{ color: COLORS.subtext }}
+              >
                 Cancelación gratuita
               </Text>
             </View>

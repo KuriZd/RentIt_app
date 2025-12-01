@@ -247,8 +247,8 @@ export default function SettingsScreen() {
         {/* Items */}
         <SettingItem
           icon={<Feather name="user" size={20} color={COLORS.icon} />}
-          label="Edit Profile"
-          onPress={() => router.push("/editprofile")}
+          label="Profile"
+          onPress={() => router.push("/myprofile")}
         />
         <SettingItem
           icon={<Feather name="help-circle" size={20} color={COLORS.icon} />}

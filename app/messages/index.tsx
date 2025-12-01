@@ -1,89 +1,102 @@
 // app/messages/index.tsx
 import { Feather } from "@expo/vector-icons";
+import { Link } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
     FlatList,
-    Platform,
+    Image,
     Pressable,
     Text,
     View,
-    useColorScheme,
+    useColorScheme
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type CategoryKey = "all" | "host" | "guest" | "support";
+type ReadStatus = "sent" | "delivered" | "read";
 
 type Message = {
   id: string;
-  title: string;
+  name: string;
   last: string;
+  time: string;
+  avatar?: string;
   category: Exclude<CategoryKey, "all">;
+  status?: ReadStatus;
   unread?: boolean;
 };
 
-const CATEGORIES: { key: CategoryKey; label: string }[] = [
+const CATEGORIES = [
   { key: "all", label: "Todos" },
-  { key: "host", label: "Hospedar" },
-  { key: "guest", label: "Huésped" },
+  { key: "host", label: "Propietario" },
+  { key: "guest", label: "Rentas" },
   { key: "support", label: "Asistencia" },
 ];
 
-// Si quieres arrancar con lista vacía como en el mock:
-const MESSAGES: Message[] = [];
+const MESSAGES: Message[] = [
+  {
+    id: "1",
+    name: "Yayo (Junior)",
+    last: "Donde andan???",
+    time: "10:20 a. m.",
+    category: "guest",
+    status: "read",
+    unread: false,
+  },
+  {
+    id: "2",
+    name: "Giuli🧠 Toscana",
+    last: "Que ayer me quedé bieeeen tieso te…",
+    time: "08:53 a. m.",
+    category: "host",
+    status: "delivered",
+    unread: true,
+  },
+  {
+    id: "3",
+    name: "Soporte RentIt",
+    last: "Tu caso fue actualizado.",
+    time: "Ayer",
+    category: "support",
+    status: "sent",
+  },
+];
 
 function useColors() {
-  const scheme = useColorScheme();
-  const isDark = scheme === "dark";
-  return useMemo(
+  const isDark = useColorScheme() === "dark";
+
+  const COLORS = useMemo(
     () => ({
-      isDark,
-      bg: isDark ? "#0b0b0c" : "#ffffff",
-      card: isDark ? "#0f1115" : "#ffffff",
+      bg: isDark ? "#0b0b0c" : "#f9fafb",
+      icon: isDark ? "#e5e7eb" : "#111827",
+      ring: isDark ? "#3f3f46" : "#e5e7eb",
+
+      // extras necesarios para texto y pills
       text: isDark ? "#fafafa" : "#111827",
       sub: isDark ? "#a1a1aa" : "#6b7280",
       pill: isDark ? "#27272a" : "#f3f4f6",
-      ring: isDark ? "#3f3f46" : "#e5e7eb",
-      icon: isDark ? "#e5e7eb" : "#111827",
     }),
     [isDark]
   );
+
+  return COLORS;
 }
 
-function Chip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active?: boolean;
-  onPress?: () => void;
-}) {
+function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const C = useColors();
+
   return (
     <Pressable
       onPress={onPress}
-      className={[
-        "px-4 py-2 rounded-full mr-2 mb-2 border",
-        active
-          ? "bg-black border-black"
-          : "bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700",
-      ].join(" ")}
-      style={
-        Platform.select({
-          ios: {
-            shadowColor: "#000",
-            shadowOpacity: 0.06,
-            shadowRadius: 8,
-            shadowOffset: { width: 0, height: 4 },
-          },
-          android: { elevation: 0 },
-          default: {},
-        }) as any
-      }
-      accessibilityRole="button"
-      accessibilityState={{ selected: !!active }}
+      className="px-4 py-2 rounded-full mr-2 mb-2 border"
+      style={{
+        backgroundColor: active ? C.icon : C.pill,
+        borderColor: active ? C.icon : C.ring,
+      }}
     >
       <Text
-        className={active ? "text-white font-semibold" : "text-neutral-700 dark:text-neutral-200 font-medium"}
+        className="font-medium"
+        style={{ color: active ? "#fff" : C.icon }}
       >
         {label}
       </Text>
@@ -95,7 +108,10 @@ function EmptyState() {
   const C = useColors();
   return (
     <View className="flex-1 items-center justify-center">
-      <View className="h-16 w-16 rounded-full items-center justify-center bg-neutral-100 dark:bg-neutral-800 mb-3">
+      <View
+        className="h-16 w-16 rounded-full items-center justify-center mb-3"
+        style={{ backgroundColor: C.pill }}
+      >
         <Feather name="message-square" size={28} color={C.icon} />
       </View>
       <Text className="text-lg font-semibold" style={{ color: C.text }}>
@@ -108,33 +124,120 @@ function EmptyState() {
   );
 }
 
+function Avatar({ name, uri }: { name: string; uri?: string }) {
+  const C = useColors();
+  const initials = name
+    .split(" ")
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("");
+
+  return uri ? (
+    <Image
+      source={{ uri }}
+      className="h-12 w-12 rounded-full mr-3"
+      style={{ backgroundColor: C.pill }}
+    />
+  ) : (
+    <View
+      className="h-12 w-12 rounded-full items-center justify-center mr-3"
+      style={{ backgroundColor: C.pill }}
+    >
+      <Text style={{ color: C.text, fontWeight: "600" }}>{initials}</Text>
+    </View>
+  );
+}
+
+function ReadReceipt({ status }: { status: ReadStatus }) {
+  const C = useColors();
+  const base = C.sub;
+  const readBlue = "#3AB4FF";
+
+  const color = status === "read" ? readBlue : base;
+
+  if (status === "sent") {
+    return <Feather name="check" size={14} color={base} />;
+  }
+
+  return (
+    <View className="flex-row items-center">
+      <Feather name="check" size={14} color={color} />
+      <Feather name="check" size={14} color={color} style={{ marginLeft: -6 }} />
+    </View>
+  );
+}
+
+function MessageRow({ item }: { item: Message }) {
+  const C = useColors();
+
+  return (
+    <Link href={`./messages/${item.id}`} asChild>
+      <Pressable className="py-3 flex-row items-center">
+        <Avatar name={item.name} uri={item.avatar} />
+
+        <View className="flex-1">
+          <View className="flex-row items-center justify-between">
+            <Text
+              numberOfLines={1}
+              style={{
+                color: C.text,
+                fontWeight: item.unread ? "800" : "600",
+                fontSize: 15,
+              }}
+            >
+              {item.name}
+            </Text>
+
+            <Text className="text-xs" style={{ color: C.sub }}>
+              {item.time}
+            </Text>
+          </View>
+
+          <View className="mt-0.5 flex-row items-center">
+            <ReadReceipt status={item.status || "sent"} />
+
+            <Text
+              numberOfLines={1}
+              className="ml-1 text-sm"
+              style={{ color: C.sub }}
+            >
+              {item.last}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    </Link>
+  );
+}
+
 export default function MessagesScreen() {
   const C = useColors();
   const [active, setActive] = useState<CategoryKey>("all");
 
-  const data = useMemo(() => {
-    if (active === "all") return MESSAGES;
-    return MESSAGES.filter((m) => m.category === active);
-  }, [active]);
+  const data =
+    active === "all"
+      ? MESSAGES
+      : MESSAGES.filter((m) => m.category === active);
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: C.bg }}>
-      {/* Top bar */}
+      {/* Top */}
       <View className="px-5 pt-2 pb-3 flex-row items-center justify-between">
-        <Text className="text-3xl font-bold tracking-tight" style={{ color: C.text }}>
+        <Text className="text-3xl font-bold" style={{ color: C.text }}>
           Mensajes
         </Text>
 
         <View className="flex-row items-center gap-2">
           <Pressable
-            className="h-10 w-10 rounded-full items-center justify-center bg-neutral-100 dark:bg-neutral-800"
-            accessibilityLabel="Buscar"
+            className="h-10 w-10 rounded-full items-center justify-center"
+            style={{ backgroundColor: C.pill }}
           >
             <Feather name="search" size={18} color={C.icon} />
           </Pressable>
+
           <Pressable
-            className="h-10 w-10 rounded-full items-center justify-center bg-neutral-100 dark:bg-neutral-800"
-            accessibilityLabel="Ajustes"
+            className="h-10 w-10 rounded-full items-center justify-center"
+            style={{ backgroundColor: C.pill }}
           >
             <Feather name="settings" size={18} color={C.icon} />
           </Pressable>
@@ -149,33 +252,24 @@ export default function MessagesScreen() {
               key={c.key}
               label={c.label}
               active={active === c.key}
-              onPress={() => setActive(c.key)}
+              onPress={() => setActive(c.key as CategoryKey)}
             />
           ))}
         </View>
       </View>
 
-      {/* Lista / vacío */}
+      {/* Lista */}
       {data.length === 0 ? (
         <EmptyState />
       ) : (
         <FlatList
           data={data}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 12 }}
+          keyExtractor={(i) => i.id}
+          contentContainerStyle={{ paddingHorizontal: 20 }}
           ItemSeparatorComponent={() => (
-            <View className="h-px bg-neutral-200 dark:bg-neutral-800" />
+            <View className="h-px" style={{ backgroundColor: C.ring }} />
           )}
-          renderItem={({ item }) => (
-            <Pressable className="py-4">
-              <Text className="text-base font-medium mb-1" style={{ color: C.text }}>
-                {item.title}
-              </Text>
-              <Text className="text-sm" style={{ color: C.sub }}>
-                {item.last}
-              </Text>
-            </Pressable>
-          )}
+          renderItem={({ item }) => <MessageRow item={item} />}
         />
       )}
     </SafeAreaView>

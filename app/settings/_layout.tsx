@@ -36,7 +36,6 @@ export default function TabLayout() {
           <Stack.Screen name="index" options={{ headerShown: false }} />
 
           {/* Aquí puedes listar tus otras pantallas */}
-          <Stack.Screen name="item/[id]" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="(modals)/new-item" />
         </Stack>
