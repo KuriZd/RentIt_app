@@ -13,24 +13,31 @@ import {
 } from "react-native";
 import { supabase } from "../../utils/supabase";
 
-/* ---------- Tipos UI ---------- */
 type DeliveryMethod = "Envio" | "Pickup" | "Entrega";
+type UnidadPrecio = "hora" | "dia" | "semana";
+
 type Item = {
-  id: string; // cart_items.id
-  title: string; // titulo_cached
-  price: number; // numeric (pesos)
-  image: string; // image_url
-  available?: boolean; // disponible
+  id: string;
+  articleId: number;
+  title: string;
+  price: number;
+  image: string;
+  available?: boolean;
   method?: DeliveryMethod;
-  qty?: number; // número de periodos
+  qty?: number;
+  unit?: UnidadPrecio;
+  periodQty?: number;
+  deliveryFee?: number;
+  pickupOnly?: boolean;
+  deliveryAvailable?: boolean;
 };
 
-/* ---------- Tipos DB mínimos ---------- */
 type CartRow = {
   id: string;
   id_perfil: string;
   status: "active" | "ordered" | "abandoned" | "canceled";
 };
+
 type CartTotalsRow = {
   id_carrito: string;
   id_perfil: string;
@@ -38,30 +45,56 @@ type CartTotalsRow = {
   items_count: number;
 };
 
-/* ---------- Colores ---------- */
+function addPeriods(base: Date, unit: UnidadPrecio, periods: number): Date {
+  const d = new Date(base);
+  switch (unit) {
+    case "hora":
+      d.setHours(d.getHours() + periods);
+      break;
+    case "semana":
+      d.setDate(d.getDate() + periods * 7);
+      break;
+    case "dia":
+    default:
+      d.setDate(d.getDate() + periods);
+      break;
+  }
+  return d;
+}
+
 function useColors() {
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
-  return useMemo(
+
+  const COLORS = useMemo(
     () => ({
-      isDark,
-      bg: isDark ? "#0b0b0c" : "#ffffff",
-      card: isDark ? "#0f1115" : "#ffffff",
       pill: isDark ? "#27272a" : "#f3f4f6",
-      text: isDark ? "#fafafa" : "#111827",
-      subtext: isDark ? "#a1a1aa" : "#52525b",
-      success: "#16a34a",
-      ring: isDark ? "#3f3f46" : "#e5e7eb",
       icon: isDark ? "#e5e7eb" : "#111827",
       iconMuted: isDark ? "#a1a1aa" : "#6b7280",
+      ring: isDark ? "#3f3f46" : "#e5e7eb",
+      overlay: "rgba(0,0,0,0.30)",
     }),
     [isDark]
   );
+
+  const bg = isDark ? "#0b0b0c" : "#ffffff";
+  const card = isDark ? "#0f1115" : "#ffffff";
+  const text = isDark ? "#fafafa" : "#111827";
+  const subtext = isDark ? "#a1a1aa" : "#52525b";
+  const success = "#16a34a";
+
+  return {
+    isDark,
+    bg,
+    card,
+    text,
+    subtext,
+    success,
+    ...COLORS,
+  };
 }
 
-/* ---------- Helpers Supabase ---------- */
 async function getCurrentPerfilId(): Promise<string | null> {
-  // Asumimos perfiles.id == auth.user.id. Si no, resuelve aquí con email ↔ perfiles.
   const { data, error } = await supabase.auth.getUser();
   if (error) throw error;
   return data.user?.id ?? null;
@@ -91,16 +124,21 @@ async function getOrCreateActiveCart(id_perfil: string): Promise<CartRow> {
 function rowToUI(row: any): Item {
   return {
     id: row.id,
+    articleId: Number(row.id_articulo),
     title: row.titulo_cached,
     price: Number(row.precio),
     image: row.image_url ?? "",
     available: !!row.disponible,
     method: row.metodo as DeliveryMethod,
-    qty: Number(row.qty ?? 1),
+    qty: row.qty ? Number(row.qty) : 1,
+    unit: row.unidad as UnidadPrecio | undefined,
+    periodQty: row.periodo_cantidad ? Number(row.periodo_cantidad) : 1,
+    deliveryFee: row.tarifa_entrega ? Number(row.tarifa_entrega) : 0,
+    pickupOnly: !!row.solo_retiro,
+    deliveryAvailable: !!row.entrega_disponible,
   };
 }
 
-/* ---------- Componente de control de cantidad ---------- */
 function QtyControl({
   value,
   onChange,
@@ -140,7 +178,6 @@ function QtyControl({
   );
 }
 
-/* ---------- Botón tipo píldora ---------- */
 function PillButton({
   label,
   onPress,
@@ -170,7 +207,6 @@ function PillButton({
   );
 }
 
-/* ---------- Tarjeta de carrito ---------- */
 function CartCard({
   item,
   onQty,
@@ -212,7 +248,6 @@ function CartCard({
           {item.method || "Envio"}
         </Text>
 
-        {/* Botones alineados a la izquierda con wrap */}
         <View className="flex-row flex-wrap items-start justify-start mt-1">
           <View className="mr-2 mb-2">
             <QtyControl
@@ -253,7 +288,6 @@ function CartCard({
   );
 }
 
-/* ---------- Tarjeta de “guardado para después” ---------- */
 function SavedCard({
   item,
   onMoveToCart,
@@ -291,7 +325,6 @@ function SavedCard({
           {item.method || "Envio"}
         </Text>
 
-        {/* Botones con wrap alineados a la izquierda */}
         <View className="flex-row flex-wrap items-start justify-start mt-10">
           <PillButton
             label="Mover al carrito"
@@ -315,17 +348,16 @@ function SavedCard({
   );
 }
 
-/* ---------- Pantalla principal ---------- */
 export default function ShoppingCartScreen() {
   const C = useColors();
 
   const [loading, setLoading] = useState(true);
+  const [checkingOut, setCheckingOut] = useState(false);
   const [cartId, setCartId] = useState<string | null>(null);
   const [cart, setCart] = useState<Item[]>([]);
-  const [saved, setSaved] = useState<Item[]>([]); // local por ahora
+  const [saved, setSaved] = useState<Item[]>([]);
   const [subtotal, setSubtotal] = useState(0);
 
-  /* ---- Cargar carrito desde Supabase ---- */
   useEffect(() => {
     (async () => {
       try {
@@ -338,7 +370,6 @@ export default function ShoppingCartScreen() {
         const cartRow = await getOrCreateActiveCart(perfilId);
         setCartId(cartRow.id);
 
-        // Carga items por id_carrito
         const itemsRes = await supabase
           .from("cart_items")
           .select(
@@ -354,6 +385,8 @@ export default function ShoppingCartScreen() {
             qty,
             metodo,
             tarifa_entrega,
+            solo_retiro,
+            entrega_disponible,
             disponible
           `
           )
@@ -370,11 +403,14 @@ export default function ShoppingCartScreen() {
           throw totalsRes.error;
 
         const rows = (itemsRes.data ?? []) as any[];
-        setCart(rows.map(rowToUI));
+        const items = rows.map(rowToUI);
+        setCart(items);
 
-        const total = Number(
-          (totalsRes.data as CartTotalsRow | null)?.subtotal ?? 0
-        );
+        const total =
+          totalsRes.data && (totalsRes.data as CartTotalsRow).subtotal != null
+            ? Number((totalsRes.data as CartTotalsRow).subtotal)
+            : items.reduce((acc, it) => acc + it.price * (it.qty ?? 1), 0);
+
         setSubtotal(total);
       } catch (e: any) {
         Alert.alert("Error", e?.message ?? "No se pudo cargar el carrito");
@@ -384,19 +420,15 @@ export default function ShoppingCartScreen() {
     })();
   }, []);
 
-  /* ---- Handlers conectados a BD ---- */
-
   const setQty = async (id: string, qty: number) => {
-    // UI optimista
     setCart((prev) => prev.map((it) => (it.id === id ? { ...it, qty } : it)));
     setSubtotal((prev) => {
       const item = cart.find((x) => x.id === id);
       if (!item) return prev;
       const old = (item.qty || 1) * item.price;
       const neu = qty * item.price;
-      return +(prev - old + neu);
+      return prev - old + neu;
     });
-    // Persistencia
     const { error } = await supabase
       .from("cart_items")
       .update({ qty })
@@ -406,29 +438,114 @@ export default function ShoppingCartScreen() {
 
   const removeFromCart = async (id: string) => {
     const item = cart.find((x) => x.id === id);
-    // Optimista
     setCart((prev) => prev.filter((it) => it.id !== id));
-    if (item) setSubtotal((p) => +(p - item.price * (item.qty || 1)));
-    // Persistencia
+    if (item) setSubtotal((p) => p - item.price * (item.qty || 1));
     const { error } = await supabase.from("cart_items").delete().eq("id", id);
     if (error) Alert.alert("Error", "No se pudo eliminar el artículo");
   };
 
-  // “Guardar para después” local (si quieres persistir, te creo saved_items)
   const saveForLater = (it: Item) => {
     setCart((prev) => prev.filter((x) => x.id !== it.id));
     setSaved((prev) => [it, ...prev]);
-    setSubtotal((p) => +(p - it.price * (it.qty || 1)));
+    setSubtotal((p) => p - it.price * (it.qty || 1));
   };
 
   const moveToCart = (it: Item) => {
     setSaved((prev) => prev.filter((x) => x.id !== it.id));
     setCart((prev) => [it, ...prev]);
-    setSubtotal((p) => +(p + it.price * (it.qty || 1)));
+    setSubtotal((p) => p + it.price * (it.qty || 1));
   };
 
   const removeFromSaved = (id: string) =>
     setSaved((prev) => prev.filter((it) => it.id !== id));
+
+  const handleCheckout = async () => {
+    if (!cart.length) {
+      Alert.alert("Carrito vacío", "Agrega artículos antes de pagar.");
+      return;
+    }
+
+    try {
+      setCheckingOut(true);
+
+      const { data: userData, error: userError } =
+        await supabase.auth.getUser();
+      if (userError || !userData.user) {
+        throw new Error("Debes iniciar sesión para continuar.");
+      }
+      const userId = userData.user.id;
+
+      const now = new Date();
+
+      const reservas = cart.map((it) => {
+        const qty = it.qty ?? 1;
+        const periodQty = it.periodQty ?? 1;
+        const totalPeriods = qty * periodQty;
+        const unidad = it.unit ?? "dia";
+
+        const fechaInicio = now.toISOString();
+        const fechaFin = addPeriods(now, unidad, totalPeriods).toISOString();
+
+        const precio_unitario = it.price;
+        const cantidad = totalPeriods;
+        const subtotalRow = precio_unitario * cantidad;
+
+        const tarifa_entrega = it.deliveryFee ?? 0;
+        const deposito_cobrado = 0;
+        const comision_plataforma = 0;
+
+        const totalRow =
+          subtotalRow + tarifa_entrega + deposito_cobrado + comision_plataforma;
+
+        const entrega_solicitada = !!it.deliveryAvailable && !it.pickupOnly;
+
+        return {
+          id_usuario: userId,
+          id_articulo: it.articleId,
+          fecha_inicio: fechaInicio,
+          fecha_fin: fechaFin,
+          precio_unitario,
+          unidad_precio: unidad,
+          cantidad,
+          entrega_solicitada,
+          tarifa_entrega,
+          deposito_cobrado,
+          subtotal: subtotalRow,
+          comision_plataforma,
+          total: totalRow,
+          estado_reservacion: "pendiente",
+          notas: null,
+        };
+      });
+
+      const { error: insertError } = await supabase
+        .from("reservaciones")
+        .insert(reservas);
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      if (cartId) {
+        await supabase
+          .from("carts")
+          .update({ status: "ordered" })
+          .eq("id", cartId);
+        await supabase.from("cart_items").delete().eq("id_carrito", cartId);
+      }
+
+      setCart([]);
+      setSubtotal(0);
+      Alert.alert(
+        "Reservación creada",
+        "Tus artículos han sido agregados a tus reservaciones."
+      );
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "No se pudo procesar el pago.");
+    } finally {
+      setCheckingOut(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -464,7 +581,6 @@ export default function ShoppingCartScreen() {
           />
         ))}
 
-        {/* Subtotal */}
         <View
           className="mt-2 mb-8 rounded-2xl px-4 py-3 border"
           style={{ borderColor: C.ring, backgroundColor: C.card }}
@@ -480,12 +596,17 @@ export default function ShoppingCartScreen() {
           <Pressable
             className="mt-3 h-11 rounded-xl items-center justify-center"
             style={{ backgroundColor: "#111827" }}
+            onPress={handleCheckout}
+            disabled={checkingOut || !cart.length}
           >
-            <Text className="text-white font-semibold">Proceder al pago</Text>
+            {checkingOut ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text className="text-white font-semibold">Proceder al pago</Text>
+            )}
           </Pressable>
         </View>
 
-        {/* Guardados */}
         <Text
           className="text-2xl font-extrabold mb-3"
           style={{ color: C.text }}
