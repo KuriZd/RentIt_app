@@ -27,7 +27,6 @@ export default function TabLayout() {
           <Stack.Screen name="settings" />
           <Stack.Screen name="(modals)/new-item" />
         </Stack>
-
         <StatusBar style={isDark ? "light" : "dark"} />
         <BottomNav safe />
       </SafeAreaView>

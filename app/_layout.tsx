@@ -12,7 +12,7 @@ import { ActivityIndicator, View } from 'react-native';
 
 export const unstable_settings = { anchor: '(tabs)' };
 
-// 👇 Solo estas dos rutas serán válidas para Redirect
+// Solo estas dos rutas serán válidas para Redirect
 type Target = '/' | '/Onboarding';
 
 export default function RootLayout() {
@@ -40,11 +40,25 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Redirect href={target} />
+
       <Stack screenOptions={{ headerShown: false }}>
+        {/* raíz */}
         <Stack.Screen name="index" />
         <Stack.Screen name="Onboarding" />
+        <Stack.Screen name="reset-password" />
+        <Stack.Screen name="auth" />
+
+        {/* grupos */}
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(profile)" />
+        <Stack.Screen name="(modals)" />
+
+        {/* stacks sueltos */}
+        <Stack.Screen name="item" />
+        <Stack.Screen name="messages" />
+        <Stack.Screen name="settings" />
       </Stack>
+
       <StatusBar style="auto" />
     </ThemeProvider>
   );

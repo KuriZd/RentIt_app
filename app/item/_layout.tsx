@@ -32,12 +32,13 @@ export default function TabLayout() {
               ) : null,
           })}
         >
-          {/* Ocultamos el header en Home */}
-          <Stack.Screen name="index" options={{ headerShown: false }} />
+          {/* Ocultamos el header en Home
+          <Stack.Screen name="index" options={{ headerShown: false }} /> */}
 
           {/* Aquí puedes listar tus otras pantallas */}
-          <Stack.Screen name="item/[id]" />
-        </Stack>
+          <Stack.Screen name="[id]" />
+
+          </Stack>
 
         <StatusBar style={isDark ? "light" : "dark"} />
         <BottomNav safe />

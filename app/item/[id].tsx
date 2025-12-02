@@ -1,4 +1,3 @@
-// app/items/[id].tsx
 import { supabase } from "@/utils/supabase";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -14,9 +13,9 @@ import {
   View,
   useColorScheme,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Button from "../../components/ui/button";
 
-/* ----------------- Tipos ----------------- */
 type UnidadPrecio = "hora" | "dia" | "semana";
 
 type Articulo = {
@@ -43,9 +42,9 @@ type DeliveryMethod = "Envio" | "Pickup" | "Entrega";
 const { width: W } = Dimensions.get("window");
 
 const unitLabel = {
-  hora: { sing: "hour", plural: "hours" },
-  dia: { sing: "day", plural: "days" },
-  semana: { sing: "week", plural: "weeks" },
+  hora: { sing: "hora", plural: "horas" },
+  dia: { sing: "día", plural: "días" },
+  semana: { sing: "semana", plural: "semanas" },
 } as const;
 
 function Stars({ value, size = 14 }: { value: number; size?: number }) {
@@ -99,9 +98,15 @@ export default function ItemDetail() {
   const router = useRouter();
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
+  const insets = useSafeAreaInsets();
 
   const COLORS = useMemo(
     () => ({
+      pill: isDark ? "#27272a" : "#f3f4f6",
+      icon: isDark ? "#e5e7eb" : "#111827",
+      iconMuted: isDark ? "#a1a1aa" : "#6b7280",
+      ring: isDark ? "#3f3f46" : "#e5e7eb",
+      overlay: "rgba(0,0,0,0.30)",
       bg: isDark ? "#0b0b0c" : "#ffffff",
       text: isDark ? "#fafafa" : "#111827",
       subtext: isDark ? "#a1a1aa" : "#6b7280",
@@ -274,10 +279,7 @@ export default function ItemDetail() {
         disponible: true,
       });
 
-      if (insertErr) {
-        console.log("Cart insert error:", JSON.stringify(insertErr, null, 2));
-        throw insertErr;
-      }
+      if (insertErr) throw insertErr;
 
       Alert.alert("Añadido al carrito", "El artículo se agregó a tu carrito.");
     } catch (e: any) {
@@ -288,17 +290,28 @@ export default function ItemDetail() {
   };
 
   return (
-    <View className="flex-1" style={{ backgroundColor: COLORS.bg }}>
+    <View
+      className="flex-1"
+      style={{ backgroundColor: COLORS.bg, paddingTop: insets.top }}
+    >
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + 130,
+          paddingHorizontal: 16,
+        }}
+      >
+        <View className="mt-2 rounded-3xl overflow-hidden">
           <Image
             source={{ uri: hero }}
-            style={{ width: W, height: 240, borderRadius: 20 }}
+            style={{ width: W - 32, height: 240 }}
+            resizeMode="cover"
           />
         </View>
 
-        <View className="w-full mt-2">
+        <View className="w-full mt-4">
           <View
             className="rounded-3xl px-5 pb-6 pt-5 shadow-sm"
             style={{
@@ -447,63 +460,57 @@ export default function ItemDetail() {
           </View>
         </View>
 
-        {rating.count > 0 && (
-          <View className="px-5 mt-5">
+        {rating.count > 0 ? (
+          <View className="px-1 mt-6">
             <View
-              className="rounded-3xl px-5 py-6 items-center"
+              className="rounded-3xl px-6 py-7"
               style={{
                 backgroundColor: isDark ? "#020617" : "#f9fafb",
                 borderWidth: 1,
                 borderColor: COLORS.border,
               }}
             >
-              <View className="flex-row items-center mb-2">
-                <Feather
-                  name="award"
-                  size={20}
-                  color={COLORS.gold}
-                  style={{ marginRight: 6 }}
-                />
+              <View className="items-center mb-3">
+                <View className="flex-row items-center">
+                  <Text style={{ fontSize: 26, marginRight: 8 }}>🏅</Text>
+                  <Text
+                    style={{
+                      fontSize: 40,
+                      fontWeight: "700",
+                      color: COLORS.text,
+                    }}
+                  >
+                    {rating.avg.toFixed(1)}
+                  </Text>
+                  <Text style={{ fontSize: 26, marginLeft: 8 }}>🏅</Text>
+                </View>
+
                 <Text
-                  className="text-3xl font-semibold"
+                  className="mt-2 text-base font-semibold"
                   style={{ color: COLORS.text }}
                 >
-                  {rating.avg.toFixed(1)}
+                  Favorito entre huéspedes
                 </Text>
-                <Feather
-                  name="award"
-                  size={20}
-                  color={COLORS.gold}
-                  style={{ marginLeft: 6 }}
-                />
+
+                <Text
+                  className="mt-2 text-xs text-center leading-4"
+                  style={{ color: COLORS.subtext }}
+                >
+                  Este alojamiento está en el 5% de los mejor calificados entre
+                  los anuncios que cumplen con los requisitos, con base en las
+                  calificaciones, las evaluaciones y la confiabilidad.
+                </Text>
               </View>
 
-              <Text
-                className="text-base font-semibold"
-                style={{ color: COLORS.text }}
-              >
-                Favorito entre arrendatarios
-              </Text>
-
-              <Text
-                className="mt-2 text-xs text-center leading-4"
-                style={{ color: COLORS.subtext }}
-              >
-                Este artículo está dentro del 5% de los mejor calificados entre
-                los anuncios que cumplen con los requisitos, con base en las
-                calificaciones, las evaluaciones y la confiabilidad.
-              </Text>
-
               <View
-                className="w-full mt-5"
+                className="w-full mt-4 pt-4"
                 style={{
                   borderTopColor: COLORS.border,
                   borderTopWidth: 1,
-                  paddingTop: 16,
                 }}
               >
                 <View className="flex-row items-center mb-2">
-                  <Stars value={5} size={13} />
+                  <Stars value={rating.avg} size={13} />
                   <Text
                     className="text-[11px] ml-2"
                     style={{ color: COLORS.subtext }}
@@ -560,42 +567,77 @@ export default function ItemDetail() {
               </Pressable>
             </View>
           </View>
-        )}
-
-        <View style={{ height: 110 }} />
-      </ScrollView>
-
-      <View
-        className="absolute left-0 right-0 bottom-0 px-4 pt-3 pb-4"
-        style={{
-          backgroundColor: COLORS.bg,
-          borderTopWidth: 1,
-          borderTopColor: COLORS.border,
-        }}
-      >
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1 mr-3">
-            <Text className="text-sm" style={{ color: COLORS.text }}>
-              {priceLine || " "}
-            </Text>
-            <View className="flex-row items-center mt-1">
-              <Feather name="check-circle" color="#22c55e" size={14} />
+        ) : (
+          <View className="px-1 mt-6">
+            <View
+              className="rounded-3xl px-6 py-6 items-center"
+              style={{
+                backgroundColor: isDark ? "#020617" : "#f9fafb",
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
+            >
+              <Feather
+                name="info"
+                size={20}
+                color={COLORS.iconMuted}
+                style={{ marginBottom: 8 }}
+              />
               <Text
-                className="text-xs ml-1"
+                className="text-sm text-center"
                 style={{ color: COLORS.subtext }}
               >
-                Cancelación gratuita
+                Aún no hay reseñas para este artículo.
+              </Text>
+              <Text
+                className="text-xs text-center mt-1"
+                style={{ color: COLORS.subtext }}
+              >
+                Reserva y sé la primera persona en dejar tu opinión.
               </Text>
             </View>
           </View>
+        )}
+      </ScrollView>
 
-          <View className="w-36">
-            <Button
-              label={addingToCart ? "Agregando..." : "Reservar"}
-              variant="primary"
-              disabled={addingToCart || !item}
-              onPress={handleReserve}
-            />
+      <View
+        className="absolute left-0 right-0"
+        style={{
+          bottom: insets.bottom ? insets.bottom - 4 : 0,
+        }}
+      >
+        <View
+          className="px-4 pt-3 pb-4"
+          style={{
+            backgroundColor: COLORS.bg,
+            borderTopWidth: 1,
+            borderTopColor: COLORS.border,
+          }}
+        >
+          <View className="flex-row items-center justify-between">
+            <View className="flex-1 mr-3">
+              <Text className="text-sm" style={{ color: COLORS.text }}>
+                {priceLine || " "}
+              </Text>
+              <View className="flex-row items-center mt-1">
+                <Feather name="check-circle" color="#22c55e" size={14} />
+                <Text
+                  className="text-xs ml-1"
+                  style={{ color: COLORS.subtext }}
+                >
+                  Cancelación gratuita
+                </Text>
+              </View>
+            </View>
+
+            <View className="w-36">
+              <Button
+                label={addingToCart ? "Agregando..." : "Reservar"}
+                variant="primary"
+                disabled={addingToCart || !item}
+                onPress={handleReserve}
+              />
+            </View>
           </View>
         </View>
       </View>
