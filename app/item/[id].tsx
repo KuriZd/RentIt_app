@@ -1,3 +1,4 @@
+// app/item/[id].tsx
 import { supabase } from "@/utils/supabase";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -26,7 +27,7 @@ type Articulo = {
   unidad_precio: UnidadPrecio;
   periodo_cantidad: number | null;
   url_publica: string | null;
-  id_propietario: string | null;
+  id_propietario: string | null; // UUID
   estado_articulo: string | null;
   estado_publicacion: string | null;
   solo_retiro: boolean | null;
@@ -35,6 +36,15 @@ type Articulo = {
 };
 
 type ReviewAgg = { avg: number; count: number };
+
+type ItemReview = {
+  id: number;
+  comentario: string | null;
+  calificacion: number | null;
+  creado_en: string | null;
+  autor_nombre: string | null;
+  autor_avatar: string | null;
+};
 
 type CartStatus = "active" | "pending" | "completed" | "cancelled";
 type DeliveryMethod = "Envio" | "Pickup" | "Entrega";
@@ -93,6 +103,18 @@ const getOrCreateCartId = async (perfilId: string): Promise<string> => {
   return inserted.id;
 };
 
+function timeAgo(dateIso: string | null): string {
+  if (!dateIso) return "";
+  const d = new Date(dateIso);
+  if (Number.isNaN(d.getTime())) return "";
+  const diffMs = Date.now() - d.getTime();
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (days < 1) return "hoy";
+  if (days < 7) return `hace ${days} día${days === 1 ? "" : "s"}`;
+  const weeks = Math.floor(days / 7);
+  return `hace ${weeks} semana${weeks === 1 ? "" : "s"}`;
+}
+
 export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -120,6 +142,7 @@ export default function ItemDetail() {
 
   const [item, setItem] = useState<Articulo | null>(null);
   const [rating, setRating] = useState<ReviewAgg>({ avg: 0, count: 0 });
+  const [reviews, setReviews] = useState<ItemReview[]>([]);
   const [owner, setOwner] = useState<{ nombre: string; avatar?: string | null }>(
     {
       nombre: "Usuario",
@@ -134,6 +157,7 @@ export default function ItemDetail() {
     try {
       setLoading(true);
 
+      // 1. Artículo
       const { data: art, error: artErr } = await supabase
         .from("articulos")
         .select(
@@ -167,6 +191,7 @@ export default function ItemDetail() {
 
       setItem(art);
 
+      // 2. Perfil del propietario
       if (art.id_propietario) {
         const { data: perfil, error: perfilErr } = await supabase
           .from("perfiles")
@@ -182,20 +207,82 @@ export default function ItemDetail() {
         });
       }
 
-      const { data: reseñas, error: rErr } = await supabase
+      // 3. Reseñas del artículo (ligadas por id_articulo)
+      const { data: resenasRaw, error: rErr } = await supabase
         .from("reseñas")
-        .select("calificacion")
-        .eq("id_articulo", Number(id));
+        .select(
+          `
+          id,
+          calificacion,
+          comentario,
+          creado_en,
+          id_autor
+        `
+        )
+        .eq("id_articulo", Number(id))
+        .order("creado_en", { ascending: false });
 
       if (rErr) throw rErr;
 
-      const nums = (reseñas ?? [])
+      // 4. Rating agregado
+      const nums = (resenasRaw ?? [])
         .map((r: any) => Number(r.calificacion))
         .filter((n) => !isNaN(n));
-      const avg = nums.length
-        ? nums.reduce((a, b) => a + b, 0) / nums.length
-        : 0;
-      setRating({ avg, count: nums.length });
+      const count = nums.length;
+      const avg = count ? nums.reduce((a, b) => a + b, 0) / count : 0;
+      setRating({ avg, count });
+
+      // 5. Perfiles de quienes reseñan
+      const authorIds = Array.from(
+        new Set(
+          (resenasRaw ?? [])
+            .map((r: any) => r.id_autor as string | null)
+            .filter(Boolean)
+        )
+      ) as string[];
+
+      let authorsMap = new Map<
+        string,
+        { nombre: string | null; avatar_url: string | null }
+      >();
+
+      if (authorIds.length > 0) {
+        const { data: authors, error: aErr } = await supabase
+          .from("perfiles")
+          .select("id, nombre, avatar_url")
+          .in("id", authorIds);
+
+        if (aErr) throw aErr;
+
+        authorsMap = new Map(
+          (authors ?? []).map((p: any) => [
+            p.id as string,
+            {
+              nombre: p.nombre ?? "Usuario",
+              avatar_url: p.avatar_url ?? null,
+            },
+          ])
+        );
+      }
+
+      const formatted: ItemReview[] = (resenasRaw ?? [])
+        .slice(0, 3) // mostramos hasta 3 reseñas en el detalle
+        .map((r: any) => {
+          const author = authorsMap.get(r.id_autor as string) ?? {
+            nombre: "Usuario",
+            avatar_url: null,
+          };
+          return {
+            id: r.id as number,
+            comentario: (r.comentario as string) ?? null,
+            calificacion: (r.calificacion as number) ?? null,
+            creado_en: (r.creado_en as string) ?? null,
+            autor_nombre: author.nombre,
+            autor_avatar: author.avatar_url,
+          };
+        });
+
+      setReviews(formatted);
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "No se pudo cargar el artículo.");
     } finally {
@@ -225,15 +312,15 @@ export default function ItemDetail() {
     item?.estado_articulo === "disponible"
       ? "#10b981"
       : item?.estado_articulo === "mantenimiento"
-      ? "#f59e0b"
-      : "#ef4444";
+        ? "#f59e0b"
+        : "#ef4444";
 
   const estadoPublicacionColor =
     item?.estado_publicacion === "publicado"
       ? "#2563eb"
       : item?.estado_publicacion === "pausado"
-      ? "#f59e0b"
-      : "#9ca3af";
+        ? "#f59e0b"
+        : "#9ca3af";
 
   const handleReserve = async () => {
     if (!item) return;
@@ -260,8 +347,8 @@ export default function ItemDetail() {
       const metodo: DeliveryMethod = item.solo_retiro
         ? "Pickup"
         : item.entrega_disponible
-        ? "Envio"
-        : "Entrega";
+          ? "Envio"
+          : "Entrega";
 
       const { error: insertErr } = await supabase.from("cart_items").insert({
         id_carrito: cartId,
@@ -418,7 +505,23 @@ export default function ItemDetail() {
               style={{ backgroundColor: COLORS.border }}
             />
 
-            <View className="flex-row items-center">
+            {/* PERFIL DEL PROPIETARIO -> NAVEGA A /host/[id] CON id_propietario (UUID) */}
+            <Pressable
+              className="flex-row items-center"
+              onPress={() => {
+                if (!item?.id_propietario) {
+                  Alert.alert(
+                    "Sin perfil",
+                    "El propietario no tiene un perfil disponible."
+                  );
+                  return;
+                }
+                router.push({
+                  pathname: "/host/[id]",
+                  params: { id: item.id_propietario },
+                });
+              }}
+            >
               <Image
                 source={{
                   uri: owner.avatar || "https://i.pravatar.cc/80?img=12",
@@ -433,10 +536,16 @@ export default function ItemDetail() {
                   {owner.nombre}
                 </Text>
                 <Text className="text-xs" style={{ color: COLORS.subtext }}>
-                  Propietario verificado
+                  Propietario verificado · Ver perfil
                 </Text>
               </View>
-            </View>
+
+              <Feather
+                name="chevron-right"
+                size={18}
+                color={COLORS.iconMuted}
+              />
+            </Pressable>
 
             <View
               className="my-5 h-px"
@@ -460,6 +569,7 @@ export default function ItemDetail() {
           </View>
         </View>
 
+        {/* Bloque de reseñas del artículo */}
         {rating.count > 0 ? (
           <View className="px-1 mt-6">
             <View
@@ -489,74 +599,78 @@ export default function ItemDetail() {
                   className="mt-2 text-base font-semibold"
                   style={{ color: COLORS.text }}
                 >
-                  Favorito entre huéspedes
+                  Opiniones recientes
                 </Text>
 
                 <Text
                   className="mt-2 text-xs text-center leading-4"
                   style={{ color: COLORS.subtext }}
                 >
-                  Este alojamiento está en el 5% de los mejor calificados entre
-                  los anuncios que cumplen con los requisitos, con base en las
-                  calificaciones, las evaluaciones y la confiabilidad.
+                  Basado en las calificaciones y comentarios de quienes ya han
+                  rentado este artículo.
                 </Text>
               </View>
 
-              <View
-                className="w-full mt-4 pt-4"
-                style={{
-                  borderTopColor: COLORS.border,
-                  borderTopWidth: 1,
-                }}
-              >
-                <View className="flex-row items-center mb-2">
-                  <Stars value={rating.avg} size={13} />
-                  <Text
-                    className="text-[11px] ml-2"
-                    style={{ color: COLORS.subtext }}
-                  >
-                    Hace 1 mes
-                  </Text>
-                </View>
-
-                <Text
-                  className="text-sm mb-3"
-                  style={{ color: COLORS.text }}
+              {/* Primeras reseñas */}
+              {reviews.map((r) => (
+                <View
+                  key={r.id}
+                  className="w-full mt-4 pt-4"
+                  style={{
+                    borderTopColor: COLORS.border,
+                    borderTopWidth: 1,
+                  }}
                 >
-                  Muy buen lugar, tranquilo, agradable y atención
-                  personalizada.
-                </Text>
-
-                <View className="flex-row items-center">
-                  <Image
-                    source={{
-                      uri: "https://i.pravatar.cc/80?img=32",
-                    }}
-                    className="w-9 h-9 rounded-full mr-2"
-                  />
-                  <View>
+                  <View className="flex-row items-center mb-2">
+                    <Stars
+                      value={Number(r.calificacion ?? 0)}
+                      size={13}
+                    />
                     <Text
-                      className="text-sm font-medium"
-                      style={{ color: COLORS.text }}
-                    >
-                      Juan Esteban
-                    </Text>
-                    <Text
-                      className="text-xs"
+                      className="text-[11px] ml-2"
                       style={{ color: COLORS.subtext }}
                     >
-                      Puebla, México
+                      {timeAgo(r.creado_en)}
                     </Text>
                   </View>
+
+                  <Text
+                    className="text-sm mb-3"
+                    style={{ color: COLORS.text }}
+                  >
+                    {r.comentario || "Sin comentario escrito."}
+                  </Text>
+
+                  <View className="flex-row items-center">
+                    <Image
+                      source={{
+                        uri:
+                          r.autor_avatar ||
+                          "https://i.pravatar.cc/80?img=32",
+                      }}
+                      className="w-9 h-9 rounded-full mr-2"
+                    />
+                    <View>
+                      <Text
+                        className="text-sm font-medium"
+                        style={{ color: COLORS.text }}
+                      >
+                        {r.autor_nombre ?? "Usuario"}
+                      </Text>
+                      {/* Aquí podrías agregar ciudad si tuvieras ese dato */}
+                    </View>
+                  </View>
                 </View>
-              </View>
+              ))}
 
               <Pressable
                 className="mt-5 w-full rounded-2xl py-3 items-center justify-center"
                 style={{
                   backgroundColor: isDark ? "#18181b" : "#f3f4f6",
                 }}
-                onPress={() => {}}
+                onPress={() => {
+                  // futuro: navegar a pantalla con TODAS las reseñas del artículo
+                }}
               >
                 <Text
                   className="text-sm font-semibold"
@@ -600,6 +714,7 @@ export default function ItemDetail() {
         )}
       </ScrollView>
 
+      {/* footer reserva */}
       <View
         className="absolute left-0 right-0"
         style={{
