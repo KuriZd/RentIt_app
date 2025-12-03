@@ -50,10 +50,10 @@ function SettingItem({ icon, label, onPress, danger }: SettingItemProps) {
         Platform.OS === "android"
           ? { elevation: 0 }
           : {
-              shadowOpacity: 0.05,
-              shadowRadius: 8,
-              shadowOffset: { width: 0, height: 4 },
-            }
+            shadowOpacity: 0.05,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 4 },
+          }
       }
     >
       <View className="flex-row items-center gap-3">
@@ -104,10 +104,10 @@ function SettingSwitch({
         Platform.OS === "android"
           ? { elevation: 0 }
           : {
-              shadowOpacity: 0.05,
-              shadowRadius: 8,
-              shadowOffset: { width: 0, height: 4 },
-            }
+            shadowOpacity: 0.05,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 4 },
+          }
       }
     >
       <View className="flex-row items-center gap-3">
@@ -172,7 +172,7 @@ export default function SettingsScreen() {
     if (value) {
       try {
         await Haptics.selectionAsync();
-      } catch {}
+      } catch { }
     }
   }, []);
 
@@ -257,8 +257,8 @@ export default function SettingsScreen() {
         />
         <SettingItem
           icon={<AntDesign name="global" size={20} color={COLORS.icon} />}
-          label="Language Settings"
-          onPress={() => router.push("/settings/language")}
+          label="History"
+          onPress={() => router.push("/settings/history")}
         />
         <SettingItem
           icon={<Feather name="lock" size={20} color={COLORS.icon} />}
