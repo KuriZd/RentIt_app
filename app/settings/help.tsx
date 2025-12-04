@@ -1,7 +1,16 @@
 // app/settings/help.tsx
+import { supabase } from "@/utils/supabase";
 import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Platform, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type HelpItem = { title: string; description: string };
@@ -34,8 +43,16 @@ const ITEMS: HelpItem[] = [
   },
 ];
 
+// UID fijo del administrador
+const ADMIN_ID = "8f730f62-8072-452b-b5c3-26a4ae81be72";
+
+function buildRoomId(a: string, b: string) {
+  return [a, b].sort().join(":");
+}
+
 export default function HelpScreen() {
   const [selected, setSelected] = useState<HelpItem | null>(null);
+  const router = useRouter();
 
   const cardShadow = Platform.select({
     ios: {
@@ -46,6 +63,33 @@ export default function HelpScreen() {
     },
     android: { elevation: 2 },
   });
+
+  const handleContactAdmin = async () => {
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data.user) {
+        Alert.alert(
+          "Inicia sesión",
+          "Debes iniciar sesión para contactar al administrador."
+        );
+        return;
+      }
+
+      const myId = data.user.id;
+      const roomId = buildRoomId(myId, ADMIN_ID);
+
+      router.push({
+        pathname: "/messages/[id]",
+        params: { id: roomId },
+      });
+    } catch (e) {
+      console.error(e);
+      Alert.alert(
+        "Error",
+        "No se pudo abrir el chat con el administrador. Intenta de nuevo."
+      );
+    }
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-white dark:bg-neutral-950 ">
@@ -62,6 +106,34 @@ export default function HelpScreen() {
               Select a topic to learn more or resolve your issue.
             </Text>
           )}
+        </View>
+
+        {/* Call to action: contactar admin */}
+        <View className="mb-4">
+          <Pressable
+            onPress={handleContactAdmin}
+            android_ripple={{
+              color:
+                Platform.OS === "android"
+                  ? "rgba(255,255,255,0.06)"
+                  : undefined,
+            }}
+            className="flex-row items-center rounded-2xl bg-indigo-50 dark:bg-neutral-900 px-4 py-4"
+            style={cardShadow}
+          >
+            <View className="h-10 w-10 rounded-full items-center justify-center bg-indigo-100 dark:bg-neutral-800">
+              <Feather name="message-circle" size={20} color="#4f46e5" />
+            </View>
+            <View className="flex-1 ml-3">
+              <Text className="text-[16px] font-semibold text-neutral-900 dark:text-neutral-100">
+                Contactar al administrador
+              </Text>
+              <Text className="mt-1 text-[13px] text-neutral-700 dark:text-neutral-300">
+                Si aún necesitas ayuda, envía un mensaje directo al
+                administrador para recibir soporte personalizado.
+              </Text>
+            </View>
+          </Pressable>
         </View>
 
         {/* List / Detail */}
