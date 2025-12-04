@@ -1,4 +1,4 @@
-// app/(tabs)/index.tsx
+// app/(tabs)/main.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -28,8 +28,8 @@ const unitLabel = (u?: string) =>
 
 function toItem(row: any): Item {
   const qty = Number(row.periodo_cantidad ?? 1) || 1;
-  const perUnit = Number(row.precio ?? 0) || 0; // en tu BD guardamos precio POR UNIDAD
-  const total = +(perUnit * qty).toFixed(2); // mostramos total del periodo
+  const perUnit = Number(row.precio ?? 0) || 0; // precio POR UNIDAD
+  const total = +(perUnit * qty).toFixed(2); // total del periodo
   const unidad = unitLabel(row.unidad_precio);
   return {
     id: String(row.id),
@@ -47,7 +47,7 @@ export default function HomeScreen() {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
     null
   );
-  const [query, setQuery] = useState<string>("");
+  const [query, setQuery] = useState<string>(""); // de momento no se actualiza, pero lo dejamos para cuando conectes la búsqueda
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -59,19 +59,37 @@ export default function HomeScreen() {
   /* ---------- carga desde Supabase ---------- */
   useEffect(() => {
     let alive = true;
+
     async function load() {
       setLoading(true);
       setErrorMsg(null);
 
-      // Solo artículos publicados, ordenados por fecha
-      const { data, error } = await supabase
+      // 1) obtenemos al usuario para conocer su id
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        console.error(userError);
+      }
+
+      // 2) query base
+      let queryBuilder = supabase
         .from("articulos")
         .select(
-          "id, titulo, precio, unidad_precio, periodo_cantidad, url_publica, id_categoria, publicado_en"
+          "id, titulo, precio, unidad_precio, periodo_cantidad, url_publica, id_categoria, publicado_en, id_propietario"
         )
         .eq("estado_publicacion", "publicado")
         .order("publicado_en", { ascending: false })
         .limit(48);
+
+      // 3) si hay usuario, excluimos sus propios artículos
+      if (user?.id) {
+        queryBuilder = queryBuilder.neq("id_propietario", user.id);
+      }
+
+      const { data, error } = await queryBuilder;
 
       if (!alive) return;
 
@@ -83,7 +101,7 @@ export default function HomeScreen() {
       } else {
         const items = (data ?? []).map(toItem);
 
-        // Sencillo “split” en 3 secciones para mantener tu layout
+        // dividir en 3 bloques para tu layout
         const a = items.slice(0, 12);
         const b = items.slice(12, 24);
         const c = items.slice(24, 48);
@@ -94,6 +112,7 @@ export default function HomeScreen() {
       }
       setLoading(false);
     }
+
     load();
     return () => {
       alive = false;
@@ -138,8 +157,12 @@ export default function HomeScreen() {
     <View className="flex-1 bg-white dark:bg-black">
       <HeaderSearch
         onCategorySelected={(cat) => setSelectedCategory(cat)}
-        onSearchPress={() => {}}
-        onSellPress={() => {}}
+        onSearchPress={() => {
+          // cuando quieras, aquí puedes abrir una pantalla de búsqueda o algo similar
+        }}
+        onSellPress={() => {
+          // aquí iría la navegación a la pantalla de publicar artículo
+        }}
       />
 
       {/* Loading / Error */}
