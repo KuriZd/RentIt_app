@@ -376,12 +376,12 @@ export default function SettingsScreen() {
           onPress={confirmDelete}
         />
 
-        <SettingSwitch
+        {/* <SettingSwitch
           icon={<Feather name="smartphone" size={20} color={COLORS.icon} />}
           label="Haptic feedback"
           value={hapticsEnabled}
           onValueChange={toggleHaptics}
-        />
+        /> */}
 
         <SettingItem
           icon={<Feather name="log-out" size={20} color={COLORS.icon} />}
