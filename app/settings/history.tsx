@@ -1,4 +1,4 @@
-// app/history/index.tsx
+// app/settings/history.tsx
 import { supabase } from "@/utils/supabase";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -98,7 +98,8 @@ function buildStatus(r: ReservationRow): {
             return {
                 label: "Empieza mañana",
                 color: "#16a34a",
-                subtitle: "Tu renta comenzará mañana. Asegúrate de coordinar la entrega.",
+                subtitle:
+                    "Tu renta comenzará mañana. Asegúrate de coordinar la entrega.",
             };
         }
         return {
@@ -123,7 +124,8 @@ function buildStatus(r: ReservationRow): {
         return {
             label: "Renta en curso",
             color: "#2563eb",
-            subtitle: "Tu renta está activa. Recuerda devolver el artículo a tiempo.",
+            subtitle:
+                "Tu renta está activa. Recuerda devolver el artículo a tiempo.",
         };
     }
 
@@ -145,13 +147,16 @@ export default function RentalHistory() {
 
     const COLORS = useMemo(
         () => ({
-            bg: isDark ? "#020617" : "#f9fafb",
-            card: isDark ? "#0b0b0f" : "#ffffff",
-            text: isDark ? "#f9fafb" : "#111827",
-            subtext: isDark ? "#9ca3af" : "#6b7280",
-            border: isDark ? "#27272a" : "#e5e7eb",
-            pill: isDark ? "#18181b" : "#f3f4f6",
+            pill: isDark ? "#27272a" : "#f3f4f6",
             icon: isDark ? "#e5e7eb" : "#111827",
+            iconMuted: isDark ? "#a1a1aa" : "#6b7280",
+            ring: isDark ? "#3f3f46" : "#e5e7eb",
+            overlay: "rgba(0,0,0,0.30)",
+            bg: isDark ? "#020617" : "#f9fafb",
+            card: isDark ? "#030712" : "#ffffff",
+            text: isDark ? "#f9fafb" : "#0b1120",
+            subtext: isDark ? "#9ca3af" : "#6b7280",
+            border: isDark ? "#1f2937" : "#e5e7eb",
         }),
         [isDark]
     );
@@ -200,8 +205,7 @@ export default function RentalHistory() {
                 const art = r.articulos && r.articulos.length > 0 ? r.articulos[0] : null;
                 const titulo = art?.titulo || "Artículo rentado";
                 const imageUrl =
-                    art?.url_publica ||
-                    "https://picsum.photos/seed/rentit-history/300/300";
+                    art?.url_publica || "https://picsum.photos/seed/rentit-history/300/300";
 
                 const status = buildStatus(r);
 
@@ -279,60 +283,70 @@ export default function RentalHistory() {
                     className="flex-1"
                     contentContainerStyle={{
                         paddingBottom: insets.bottom + 16,
-                        paddingHorizontal: 12,
+                        paddingHorizontal: 16,
+                        paddingTop: 4,
                     }}
                 >
-                    <Text
-                        className="text-xs mb-2 ml-1"
-                        style={{ color: COLORS.subtext }}
-                    >
-                        Últimos tres meses
-                    </Text>
-
-                    {items.map((r) => (
-                        <Pressable
-                            key={r.id}
-                            className="flex-row rounded-2xl mb-3 overflow-hidden"
-                            style={{
-                                backgroundColor: COLORS.card,
-                                borderWidth: 1,
-                                borderColor: COLORS.border,
-                            }}
-                            onPress={() => { }}
+                    <View className="w-full max-w-xl self-center">
+                        <Text
+                            className="text-xs mb-2 ml-1"
+                            style={{ color: COLORS.subtext }}
                         >
-                            <View className="w-24 h-24 items-center justify-center bg-zinc-100 dark:bg-zinc-900">
-                                <Image
-                                    source={{ uri: r.imageUrl || "" }}
-                                    className="w-full h-full"
-                                    resizeMode="cover"
-                                />
-                            </View>
+                            Últimos tres meses
+                        </Text>
 
-                            <View className="flex-1 px-3 py-3">
-                                <Text
-                                    className="text-sm font-semibold mb-1"
-                                    style={{ color: r.statusColor }}
-                                    numberOfLines={1}
-                                >
-                                    {r.statusLabel}
-                                </Text>
-                                <Text
-                                    className="text-xs mb-1"
-                                    style={{ color: COLORS.subtext }}
-                                    numberOfLines={2}
-                                >
-                                    {r.subtitle}
-                                </Text>
-                                <Text
-                                    className="text-sm mt-1"
-                                    style={{ color: COLORS.text }}
-                                    numberOfLines={1}
-                                >
-                                    {r.titulo}
-                                </Text>
-                            </View>
-                        </Pressable>
-                    ))}
+                        {items.map((r) => (
+                            <Pressable
+                                key={r.id}
+                                className="flex-row items-center rounded-2xl mb-2"
+                                style={{
+                                    backgroundColor: COLORS.card,
+                                    borderWidth: 1,
+                                    borderColor: COLORS.border,
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 8,
+                                }}
+                                onPress={() =>
+                                    router.push({
+                                        pathname: "/settings/history-detail",
+                                        params: { id: String(r.id) },
+                                    })
+                                }
+                            >
+                                <View className="mr-3 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-900">
+                                    <Image
+                                        source={{ uri: r.imageUrl || "" }}
+                                        className="w-16 h-16"
+                                        resizeMode="cover"
+                                    />
+                                </View>
+
+                                <View className="flex-1">
+                                    <Text
+                                        className="text-[11px] font-semibold mb-0.5"
+                                        style={{ color: r.statusColor }}
+                                        numberOfLines={1}
+                                    >
+                                        {r.statusLabel}
+                                    </Text>
+                                    <Text
+                                        className="text-[11px] mb-1"
+                                        style={{ color: COLORS.subtext }}
+                                        numberOfLines={2}
+                                    >
+                                        {r.subtitle}
+                                    </Text>
+                                    <Text
+                                        className="text-sm font-medium"
+                                        style={{ color: COLORS.text }}
+                                        numberOfLines={1}
+                                    >
+                                        {r.titulo}
+                                    </Text>
+                                </View>
+                            </Pressable>
+                        ))}
+                    </View>
                 </ScrollView>
             )}
         </View>
