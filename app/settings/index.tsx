@@ -21,13 +21,27 @@ import {
 } from "react-native-safe-area-context";
 import { supabase } from "../../utils/supabase";
 
-/* ---------------- Item tipo botón ---------------- */
 type SettingItemProps = {
   icon: React.ReactNode;
   label: string;
   onPress: () => void;
   danger?: boolean;
 };
+
+type SettingSwitchProps = {
+  icon: React.ReactNode;
+  label: string;
+  value: boolean;
+  onValueChange: (val: boolean) => void;
+};
+
+type Perfil = {
+  id: string;
+  nombre: string | null;
+  avatar_url: string | null;
+  email: string | null;
+};
+
 function SettingItem({ icon, label, onPress, danger }: SettingItemProps) {
   return (
     <Pressable
@@ -78,13 +92,6 @@ function SettingItem({ icon, label, onPress, danger }: SettingItemProps) {
   );
 }
 
-/* ---------------- Item con switch ---------------- */
-type SettingSwitchProps = {
-  icon: React.ReactNode;
-  label: string;
-  value: boolean;
-  onValueChange: (val: boolean) => void;
-};
 function SettingSwitch({
   icon,
   label,
@@ -152,13 +159,20 @@ export default function SettingsScreen() {
   const COLORS = useMemo(
     () => ({
       bg: isDark ? "#0b0b0c" : "#f9fafb",
+      pill: isDark ? "#27272a" : "#f3f4f6",
       icon: isDark ? "#e5e7eb" : "#111827",
+      iconMuted: isDark ? "#a1a1aa" : "#6b7280",
       ring: isDark ? "#3f3f46" : "#e5e7eb",
+      overlay: "rgba(0,0,0,0.30)",
     }),
     [isDark]
   );
 
   const [hapticsEnabled, setHapticsEnabled] = useState<boolean>(false);
+  const [profile, setProfile] = useState<Perfil | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
+  const [hasPublishedArticles, setHasPublishedArticles] =
+    useState<boolean>(false);
 
   useEffect(() => {
     AsyncStorage.getItem("hapticsEnabled").then((val) => {
@@ -175,6 +189,61 @@ export default function SettingsScreen() {
       } catch { }
     }
   }, []);
+
+  const loadProfile = useCallback(async () => {
+    try {
+      setLoadingProfile(true);
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        console.error(userError);
+        Alert.alert(
+          "Error",
+          "No se pudo obtener la sesión del usuario. Intenta nuevamente."
+        );
+        return;
+      }
+
+      if (!user) return;
+
+      const { data: perfilData, error: perfilError } = await supabase
+        .from("perfiles")
+        .select("id, nombre, avatar_url, email")
+        .eq("id", user.id)
+        .single();
+
+      if (!perfilError && perfilData) {
+        setProfile(perfilData as Perfil);
+      }
+
+      const { data: articulosData, error: articulosError } = await supabase
+        .from("articulos")
+        .select("id")
+        .eq("id_propietario", user.id)
+        .eq("estado_publicacion", "publicado")
+        .limit(1);
+
+      if (articulosError) {
+        console.error(articulosError);
+      } else {
+        setHasPublishedArticles(
+          Boolean(articulosData && articulosData.length > 0)
+        );
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingProfile(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   const confirmDelete = useCallback(() => {
     Alert.alert(
@@ -203,48 +272,77 @@ export default function SettingsScreen() {
     router.replace("/");
   }, [router]);
 
+  const avatarUri =
+    profile?.avatar_url ||
+    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=764&auto=format&fit=crop&ixlib=rb-4.1.0";
+
+  const displayName =
+    profile?.nombre || profile?.email || "Usuario de RentIt";
+
   return (
     <SafeAreaView
       className="flex-1"
-      // ✅ usa el fondo aquí y quita mt/pt “manual” en el contenido
       style={{ backgroundColor: COLORS.bg }}
-      edges={["top", "bottom"]} // asegura safe area en iOS (y no dupliques padding)
+      edges={["top", "bottom"]}
     >
       <ScrollView
-        // ✅ dejamos el padding horizontal y vertical base
         contentContainerStyle={{
           paddingHorizontal: 20,
           paddingBottom: 24 + Math.max(insets.bottom, 0),
-          paddingTop: 12 + Math.max(insets.top, 0), // usa safe area real; evita mt-20
+          paddingTop: 12 + Math.max(insets.top, 0),
         }}
-        // ✅ en iOS que ajuste automáticamente contra el notch
         contentInsetAdjustmentBehavior={
           Platform.OS === "ios" ? "automatic" : undefined
         }
       >
-        {/* Header */}
         <View className="mb-8 flex-row items-center gap-4">
           <View className="relative">
             <Image
-              source={{
-                uri: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=764&auto=format&fit=crop&ixlib=rb-4.1.0",
-              }}
+              source={{ uri: avatarUri }}
               accessibilityLabel="User avatar"
               className="h-16 w-16 rounded-full"
             />
-            {/* ring sutil */}
             <View
               className="absolute -inset-[2px] rounded-full"
               style={{ borderWidth: 2, borderColor: COLORS.ring }}
               pointerEvents="none"
             />
           </View>
-          <Text className="text-2xl font-semibold text-zinc-800 dark:text-zinc-100">
-            Monsterrat Herrera
-          </Text>
+
+          <View className="flex-1">
+            <Text className="text-2xl font-semibold text-zinc-800 dark:text-zinc-100">
+              {displayName}
+            </Text>
+
+            {profile?.email && (
+              <Text className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                {profile.email}
+              </Text>
+            )}
+
+            {loadingProfile && (
+              <Text className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+                Cargando perfil...
+              </Text>
+            )}
+          </View>
         </View>
 
-        {/* Items */}
+        {hasPublishedArticles && (
+          <>
+            <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              Mis artículos
+            </Text>
+            <SettingItem
+              icon={
+                <Feather name="shopping-bag" size={20} color={COLORS.icon} />
+              }
+              label="Mis artículos en renta"
+              onPress={() => router.push("/settings/myitems")}
+            />
+          </>
+        )}
+
         <SettingItem
           icon={<Feather name="user" size={20} color={COLORS.icon} />}
           label="Profile"
@@ -272,9 +370,7 @@ export default function SettingsScreen() {
         />
 
         <SettingItem
-          icon={
-            <MaterialIcons name="delete-outline" size={22} color="#dc2626" />
-          }
+          icon={<MaterialIcons name="delete-outline" size={22} color="#dc2626" />}
           label="Delete Account"
           danger
           onPress={confirmDelete}
