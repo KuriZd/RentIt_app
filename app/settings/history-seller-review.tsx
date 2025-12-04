@@ -1,3 +1,4 @@
+// app/settings/history-seller-review.tsx
 import { supabase } from "@/utils/supabase";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -19,12 +20,21 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 type ReservationRow = {
     id: number;
     id_usuario: string;
-    id_articulo: number;
-    articulos: { titulo: string | null; url_publica: string | null }[] | null;
+    id_articulo: number | null;
+    articulos:
+    | {
+        id: number;
+        titulo: string | null;
+        url_publica: string | null;
+        id_propietario: string | null;
+    }[]
+    | null;
 };
 
 type UiReservation = {
     id: number;
+    articuloId: number | null;
+    propietarioId: string | null;
     titulo: string;
     imageUrl: string | null;
 };
@@ -62,6 +72,7 @@ export default function HistorySellerReview() {
     const [rating, setRating] = useState(0);
     const [sellerMatch, setSellerMatch] = useState<"si" | "no" | null>(null);
     const [comment, setComment] = useState("");
+    const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
         const load = async () => {
@@ -82,14 +93,16 @@ export default function HistorySellerReview() {
                     .from("reservaciones")
                     .select(
                         `
-          id,
-          id_usuario,
-          id_articulo,
-          articulos (
-            titulo,
-            url_publica
-          )
-        `
+            id,
+            id_usuario,
+            id_articulo,
+            articulos (
+              id,
+              titulo,
+              url_publica,
+              id_propietario
+            )
+          `
                     )
                     .eq("id", Number(id))
                     .eq("id_usuario", userId)
@@ -102,13 +115,20 @@ export default function HistorySellerReview() {
                 }
 
                 const r = data as ReservationRow;
-                const art = r.articulos && r.articulos.length > 0 ? r.articulos[0] : null;
+                const art =
+                    r.articulos && r.articulos.length > 0 ? r.articulos[0] : null;
+
+                const articuloId = r.id_articulo ?? art?.id ?? null;
+                const propietarioId = art?.id_propietario ?? null;
                 const titulo = art?.titulo || "Artículo rentado";
                 const imageUrl =
-                    art?.url_publica || "https://picsum.photos/seed/rentit-seller/300/300";
+                    art?.url_publica ||
+                    "https://picsum.photos/seed/rentit-seller/300/300";
 
                 setReservation({
                     id: r.id,
+                    articuloId,
+                    propietarioId,
                     titulo,
                     imageUrl,
                 });
@@ -126,7 +146,8 @@ export default function HistorySellerReview() {
         load();
     }, [id]);
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
+        if (!reservation) return;
         if (!rating || !sellerMatch) {
             Alert.alert(
                 "Faltan datos",
@@ -134,8 +155,53 @@ export default function HistorySellerReview() {
             );
             return;
         }
-        Alert.alert("Evaluación enviada", "Gracias por evaluar al vendedor.");
-        router.back();
+
+        try {
+            setSubmitting(true);
+
+            const { data: auth, error: authErr } = await supabase.auth.getUser();
+            if (authErr || !auth?.user) {
+                Alert.alert(
+                    "Sesión requerida",
+                    "Inicia sesión para evaluar al vendedor."
+                );
+                return;
+            }
+
+            const comentarioBase =
+                `[Coincidencia con la descripción: ${sellerMatch === "si" ? "Sí" : "No"
+                }]\n\n` + (comment.trim() || "");
+
+            const { error } = await supabase.from("reseñas").insert({
+                id_reservacion: reservation.id,
+                id_autor: auth.user.id,
+                id_articulo: reservation.articuloId,
+                id_usuario_destino: reservation.propietarioId,
+                calificacion: rating,
+                comentario: comentarioBase || null,
+            });
+
+            if (error) throw error;
+
+            Alert.alert(
+                "Evaluación enviada",
+                "Gracias por evaluar al vendedor.",
+                [
+                    {
+                        text: "OK",
+                        onPress: () => router.back(),
+                    },
+                ]
+            );
+        } catch (e: any) {
+            console.error(e);
+            Alert.alert(
+                "Error",
+                e?.message || "No se pudo guardar tu evaluación."
+            );
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     const renderStars = () => (
@@ -309,8 +375,10 @@ export default function HistorySellerReview() {
 
                         <Pressable
                             onPress={handleSubmit}
+                            disabled={submitting}
                             className="rounded-full items-center justify-center"
                             style={{
+                                opacity: submitting ? 0.7 : 1,
                                 backgroundColor: COLORS.cta,
                                 paddingVertical: 12,
                             }}
@@ -319,7 +387,7 @@ export default function HistorySellerReview() {
                                 className="text-sm font-semibold"
                                 style={{ color: COLORS.ctaText }}
                             >
-                                Enviar evaluación
+                                {submitting ? "Enviando..." : "Enviar evaluación"}
                             </Text>
                         </Pressable>
                     </View>

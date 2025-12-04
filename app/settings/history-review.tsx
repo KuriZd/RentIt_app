@@ -1,5 +1,7 @@
+// app/settings/history-review.tsx
 import { supabase } from "@/utils/supabase";
 import { Feather } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -16,15 +18,26 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+const REVIEW_MEDIA_BUCKET = "review-media";
+
 type ReservationRow = {
     id: number;
     id_usuario: string;
-    id_articulo: number;
-    articulos: { titulo: string | null; url_publica: string | null }[] | null;
+    id_articulo: number | null;
+    articulos:
+    | {
+        id: number;
+        titulo: string | null;
+        url_publica: string | null;
+        id_propietario: string | null;
+    }[]
+    | null;
 };
 
 type UiReservation = {
     id: number;
+    articuloId: number | null;
+    propietarioId: string | null;
     titulo: string;
     imageUrl: string | null;
 };
@@ -62,6 +75,8 @@ export default function HistoryProductReview() {
     const [rating, setRating] = useState(0);
     const [opinion, setOpinion] = useState("");
     const [title, setTitle] = useState("");
+    const [submitting, setSubmitting] = useState(false);
+    const [mediaUrl, setMediaUrl] = useState<string | null>(null);
 
     useEffect(() => {
         const load = async () => {
@@ -82,14 +97,16 @@ export default function HistoryProductReview() {
                     .from("reservaciones")
                     .select(
                         `
-          id,
-          id_usuario,
-          id_articulo,
-          articulos (
-            titulo,
-            url_publica
-          )
-        `
+            id,
+            id_usuario,
+            id_articulo,
+            articulos (
+              id,
+              titulo,
+              url_publica,
+              id_propietario
+            )
+          `
                     )
                     .eq("id", Number(id))
                     .eq("id_usuario", userId)
@@ -102,13 +119,19 @@ export default function HistoryProductReview() {
                 }
 
                 const r = data as ReservationRow;
-                const art = r.articulos && r.articulos.length > 0 ? r.articulos[0] : null;
+                const art =
+                    r.articulos && r.articulos.length > 0 ? r.articulos[0] : null;
+
+                const articuloId = r.id_articulo ?? art?.id ?? null;
+                const propietarioId = art?.id_propietario ?? null;
                 const titulo = art?.titulo || "Artículo rentado";
                 const imageUrl =
                     art?.url_publica || "https://picsum.photos/seed/rentit-review/300/300";
 
                 setReservation({
                     id: r.id,
+                    articuloId,
+                    propietarioId,
                     titulo,
                     imageUrl,
                 });
@@ -126,7 +149,76 @@ export default function HistoryProductReview() {
         load();
     }, [id]);
 
-    const handleSubmit = () => {
+    const handlePickMedia = async () => {
+        try {
+            const { status } =
+                await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== "granted") {
+                Alert.alert(
+                    "Permiso requerido",
+                    "Necesitamos acceso a tus fotos para adjuntar una imagen."
+                );
+                return;
+            }
+
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                quality: 0.8,
+            });
+
+            if (result.canceled || !result.assets || result.assets.length === 0) {
+                return;
+            }
+
+            const asset = result.assets[0];
+            if (!asset.uri) return;
+
+            if (!reservation) {
+                setMediaUrl(asset.uri);
+                return;
+            }
+
+            const fileRes = await fetch(asset.uri);
+            const blob = (await fileRes.blob()) as Blob;
+
+            const ext =
+                asset.fileName?.split(".").pop() ||
+                asset.uri.split(".").pop() ||
+                "jpg";
+            const path = `reviews/${reservation.id}/${Date.now()}.${ext}`;
+
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from(REVIEW_MEDIA_BUCKET)
+                .upload(path, blob, {
+                    contentType: asset.mimeType || "image/jpeg",
+                    upsert: true,
+                });
+
+            if (uploadError || !uploadData) {
+                Alert.alert(
+                    "Error",
+                    uploadError?.message || "No se pudo subir la imagen."
+                );
+                return;
+            }
+
+            const { data: publicUrlData } = supabase.storage
+                .from(REVIEW_MEDIA_BUCKET)
+                .getPublicUrl(uploadData.path);
+
+            setMediaUrl(publicUrlData.publicUrl);
+        } catch (e: any) {
+            console.error(e);
+            Alert.alert(
+                "Error",
+                e?.message || "No se pudo seleccionar la imagen."
+            );
+        }
+    };
+
+    const handleSubmit = async () => {
+        if (!reservation) return;
         if (!rating || !title.trim()) {
             Alert.alert(
                 "Faltan datos",
@@ -134,8 +226,44 @@ export default function HistoryProductReview() {
             );
             return;
         }
-        Alert.alert("Opinión enviada", "Gracias por compartir tu experiencia.");
-        router.back();
+
+        try {
+            setSubmitting(true);
+
+            const { data: auth, error: authErr } = await supabase.auth.getUser();
+            if (authErr || !auth?.user) {
+                Alert.alert("Sesión requerida", "Inicia sesión para dejar una reseña.");
+                return;
+            }
+
+            const comentarioBase =
+                (title.trim() ? `Título: ${title.trim()}\n\n` : "") +
+                (opinion.trim() || "");
+
+            const { error } = await supabase.from("reseñas").insert({
+                id_reservacion: reservation.id,
+                id_autor: auth.user.id,
+                id_articulo: reservation.articuloId,
+                id_usuario_destino: reservation.propietarioId,
+                calificacion: rating,
+                comentario: comentarioBase || null,
+                url_media: mediaUrl,
+            });
+
+            if (error) throw error;
+
+            Alert.alert("Opinión enviada", "Gracias por compartir tu experiencia.", [
+                {
+                    text: "OK",
+                    onPress: () => router.back(),
+                },
+            ]);
+        } catch (e: any) {
+            console.error(e);
+            Alert.alert("Error", e?.message || "No se pudo guardar tu reseña.");
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     const renderStars = () => {
@@ -262,7 +390,7 @@ export default function HistoryProductReview() {
                             Compartir un video o una foto
                         </Text>
                         <Pressable
-                            className="items-center justify-center rounded-xl mb-4"
+                            className="items-center justify-center rounded-xl mb-2"
                             style={{
                                 borderWidth: 1,
                                 borderStyle: "dashed",
@@ -270,19 +398,26 @@ export default function HistoryProductReview() {
                                 backgroundColor: isDark ? "#020617" : "#f3f4ff",
                                 paddingVertical: 16,
                             }}
+                            onPress={handlePickMedia}
                         >
-                            <Feather
-                                name="video"
-                                size={20}
-                                color={COLORS.iconMuted}
-                            />
+                            <Feather name="video" size={20} color={COLORS.iconMuted} />
                             <Text
                                 className="mt-2 text-xs text-center px-6"
                                 style={{ color: COLORS.subtext }}
                             >
-                                Tu video podría ser el primero. Imagina que otros usuarios ven tu experiencia.
+                                Tu foto puede ayudar a otros usuarios a conocer mejor el producto.
                             </Text>
                         </Pressable>
+
+                        {mediaUrl ? (
+                            <View className="items-center mb-4">
+                                <Image
+                                    source={{ uri: mediaUrl }}
+                                    className="w-24 h-24 rounded-xl"
+                                    resizeMode="cover"
+                                />
+                            </View>
+                        ) : null}
 
                         <Text
                             className="mb-1 text-sm"
@@ -310,8 +445,10 @@ export default function HistoryProductReview() {
 
                         <Pressable
                             onPress={handleSubmit}
+                            disabled={submitting}
                             className="rounded-full items-center justify-center"
                             style={{
+                                opacity: submitting ? 0.7 : 1,
                                 backgroundColor: COLORS.cta,
                                 paddingVertical: 12,
                             }}
@@ -320,7 +457,7 @@ export default function HistoryProductReview() {
                                 className="text-sm font-semibold"
                                 style={{ color: COLORS.ctaText }}
                             >
-                                Enviar
+                                {submitting ? "Enviando..." : "Enviar"}
                             </Text>
                         </Pressable>
                     </View>
