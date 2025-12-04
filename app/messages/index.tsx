@@ -1,26 +1,42 @@
 // app/messages/index.tsx
 import { Feather } from "@expo/vector-icons";
 import { Link } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-    FlatList,
-    Image,
-    Pressable,
-    Text,
-    View,
-    useColorScheme
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Pressable,
+  Text,
+  View,
+  useColorScheme,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { supabase } from "../../utils/supabase";
 
 type CategoryKey = "all" | "host" | "guest" | "support";
 type ReadStatus = "sent" | "delivered" | "read";
 
-type Message = {
+type DbMessage = {
   id: string;
+  room_id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+};
+
+type DbProfile = {
+  id: string;
+  nombre: string | null;
+  avatar_url: string | null;
+};
+
+type Conversation = {
+  id: string; // room_id
   name: string;
   last: string;
   time: string;
-  avatar?: string;
+  avatar?: string | null;
   category: Exclude<CategoryKey, "all">;
   status?: ReadStatus;
   unread?: boolean;
@@ -33,56 +49,37 @@ const CATEGORIES = [
   { key: "support", label: "Asistencia" },
 ];
 
-const MESSAGES: Message[] = [
-  {
-    id: "1",
-    name: "Yayo (Junior)",
-    last: "Donde andan???",
-    time: "10:20 a. m.",
-    category: "guest",
-    status: "read",
-    unread: false,
-  },
-  {
-    id: "2",
-    name: "Giuli🧠 Toscana",
-    last: "Que ayer me quedé bieeeen tieso te…",
-    time: "08:53 a. m.",
-    category: "host",
-    status: "delivered",
-    unread: true,
-  },
-  {
-    id: "3",
-    name: "Soporte RentIt",
-    last: "Tu caso fue actualizado.",
-    time: "Ayer",
-    category: "support",
-    status: "sent",
-  },
-];
-
 function useColors() {
   const isDark = useColorScheme() === "dark";
 
   const COLORS = useMemo(
     () => ({
-      bg: isDark ? "#0b0b0c" : "#f9fafb",
-      icon: isDark ? "#e5e7eb" : "#111827",
-      ring: isDark ? "#3f3f46" : "#e5e7eb",
-
-      // extras necesarios para texto y pills
-      text: isDark ? "#fafafa" : "#111827",
-      sub: isDark ? "#a1a1aa" : "#6b7280",
       pill: isDark ? "#27272a" : "#f3f4f6",
+      icon: isDark ? "#e5e7eb" : "#111827",
+      iconMuted: isDark ? "#a1a1aa" : "#6b7280",
+      ring: isDark ? "#3f3f46" : "#e5e7eb",
+      overlay: "rgba(0,0,0,0.30)",
     }),
     [isDark]
   );
 
-  return COLORS;
+  return {
+    ...COLORS,
+    bg: isDark ? "#0b0b0c" : "#f9fafb",
+    text: isDark ? "#fafafa" : "#111827",
+    sub: COLORS.iconMuted,
+  };
 }
 
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function Chip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
   const C = useColors();
 
   return (
@@ -124,7 +121,7 @@ function EmptyState() {
   );
 }
 
-function Avatar({ name, uri }: { name: string; uri?: string }) {
+function Avatar({ name, uri }: { name: string; uri?: string | null }) {
   const C = useColors();
   const initials = name
     .split(" ")
@@ -152,7 +149,6 @@ function ReadReceipt({ status }: { status: ReadStatus }) {
   const C = useColors();
   const base = C.sub;
   const readBlue = "#3AB4FF";
-
   const color = status === "read" ? readBlue : base;
 
   if (status === "sent") {
@@ -167,11 +163,14 @@ function ReadReceipt({ status }: { status: ReadStatus }) {
   );
 }
 
-function MessageRow({ item }: { item: Message }) {
+function MessageRow({ item }: { item: Conversation }) {
   const C = useColors();
 
   return (
-    <Link href={`./messages/${item.id}`} asChild>
+    <Link
+      href={{ pathname: "/messages/[id]", params: { id: item.id } }}
+      asChild
+    >
       <Pressable className="py-3 flex-row items-center">
         <Avatar name={item.name} uri={item.avatar} />
 
@@ -179,11 +178,13 @@ function MessageRow({ item }: { item: Message }) {
           <View className="flex-row items-center justify-between">
             <Text
               numberOfLines={1}
-              style={{
-                color: C.text,
-                fontWeight: item.unread ? "800" : "600",
-                fontSize: 15,
-              }}
+              style={
+                {
+                  color: C.text,
+                  fontWeight: item.unread ? "800" : "600",
+                  fontSize: 15,
+                } as any
+              }
             >
               {item.name}
             </Text>
@@ -194,8 +195,7 @@ function MessageRow({ item }: { item: Message }) {
           </View>
 
           <View className="mt-0.5 flex-row items-center">
-            <ReadReceipt status={item.status || "sent"} />
-
+            {item.status && <ReadReceipt status={item.status} />}
             <Text
               numberOfLines={1}
               className="ml-1 text-sm"
@@ -210,14 +210,140 @@ function MessageRow({ item }: { item: Message }) {
   );
 }
 
+// extrae el otro usuario de un room_id tipo "uid1:uid2"
+function getOtherUserId(roomId: string, myId: string): string | null {
+  if (!roomId.includes(":")) return null;
+  const [a, b] = roomId.split(":");
+  if (!a || !b) return null;
+  if (a === myId) return b;
+  if (b === myId) return a;
+  return null;
+}
+
 export default function MessagesScreen() {
   const C = useColors();
   const [active, setActive] = useState<CategoryKey>("all");
+  const [loading, setLoading] = useState(true);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        setLoading(true);
+
+        // usuario actual
+        const { data: userData } = await supabase.auth.getUser();
+        const myId = userData.user?.id;
+        if (!myId) {
+          if (!cancelled) setConversations([]);
+          return;
+        }
+
+        // todas los mensajes donde estoy involucrado
+        const { data: msgs, error } = await supabase
+          .from("messages")
+          .select("*")
+          .or(`sender_id.eq.${myId},room_id.like.%${myId}%`)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.error("Error cargando mensajes", error);
+          if (!cancelled) setConversations([]);
+          return;
+        }
+
+        if (!msgs || msgs.length === 0) {
+          if (!cancelled) setConversations([]);
+          return;
+        }
+
+        const messages = msgs as DbMessage[];
+
+        // último mensaje por room_id
+        const seenRooms = new Set<string>();
+        const summaries: {
+          roomId: string;
+          lastMessage: DbMessage;
+          otherUserId: string | null;
+        }[] = [];
+
+        for (const m of messages) {
+          if (seenRooms.has(m.room_id)) continue;
+          seenRooms.add(m.room_id);
+          const otherId = getOtherUserId(m.room_id, myId);
+          summaries.push({
+            roomId: m.room_id,
+            lastMessage: m,
+            otherUserId: otherId,
+          });
+        }
+
+        // perfiles de los otros usuarios
+        const otherIds = Array.from(
+          new Set(
+            summaries
+              .map((s) => s.otherUserId)
+              .filter(Boolean) as string[]
+          )
+        );
+
+        let profilesMap = new Map<string, DbProfile>();
+
+        if (otherIds.length > 0) {
+          const { data: profiles, error: pErr } = await supabase
+            .from("perfiles")
+            .select("id, nombre, avatar_url")
+            .in("id", otherIds);
+
+          if (!pErr && profiles) {
+            profilesMap = new Map(
+              (profiles as DbProfile[]).map((p) => [p.id, p])
+            );
+          }
+        }
+
+        const convs: Conversation[] = summaries.map((s) => {
+          const profile = s.otherUserId
+            ? profilesMap.get(s.otherUserId)
+            : undefined;
+          const createdAt = new Date(s.lastMessage.created_at);
+
+          return {
+            id: s.roomId,
+            name:
+              profile?.nombre ??
+              (s.otherUserId ? "Usuario" : `Chat ${s.roomId}`),
+            avatar: profile?.avatar_url ?? null,
+            last: s.lastMessage.content,
+            time: createdAt.toLocaleTimeString("es-MX", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            category: "guest", // placeholder por ahora
+            status: s.lastMessage.sender_id === myId ? "sent" : undefined,
+            unread: false,
+          };
+        });
+
+        if (!cancelled) setConversations(convs);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const data =
     active === "all"
-      ? MESSAGES
-      : MESSAGES.filter((m) => m.category === active);
+      ? conversations
+      : conversations.filter((m) => m.category === active);
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: C.bg }}>
@@ -251,15 +377,19 @@ export default function MessagesScreen() {
             <Chip
               key={c.key}
               label={c.label}
-              active={active === c.key}
+              active={active === (c.key as CategoryKey)}
               onPress={() => setActive(c.key as CategoryKey)}
             />
           ))}
         </View>
       </View>
 
-      {/* Lista */}
-      {data.length === 0 ? (
+      {/* Lista / Loading / Empty */}
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator />
+        </View>
+      ) : data.length === 0 ? (
         <EmptyState />
       ) : (
         <FlatList

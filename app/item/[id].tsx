@@ -2,11 +2,19 @@ import { sendPushNotification } from "@/utils/notifications";
 import { supabase } from "@/utils/supabase";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Alert,
+  Animated,
   Dimensions,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -16,7 +24,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Button from "../../components/ui/button";
-
 
 type UnidadPrecio = "hora" | "dia" | "semana";
 
@@ -41,6 +48,19 @@ type ReviewAgg = { avg: number; count: number };
 type CartStatus = "active" | "pending" | "completed" | "cancelled";
 type DeliveryMethod = "Envio" | "Pickup" | "Entrega";
 
+type ToastState =
+  | {
+      type: "success" | "error";
+      title: string;
+      message?: string;
+    }
+  | null;
+
+type ToastProps = {
+  toast: ToastState;
+  onDismiss: () => void;
+};
+
 const { width: W } = Dimensions.get("window");
 
 const unitLabel = {
@@ -48,6 +68,231 @@ const unitLabel = {
   dia: { sing: "día", plural: "días" },
   semana: { sing: "semana", plural: "semanas" },
 } as const;
+
+function AnimatedToast({ toast, onDismiss }: ToastProps) {
+  const translateY = useRef(new Animated.Value(-100)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    if (toast) {
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 65,
+          friction: 8,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scale, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 80,
+          friction: 7,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(translateY, {
+          toValue: -100,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 0.9,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [toast, translateY, opacity, scale]);
+
+  if (!toast) return null;
+
+  const bgColor = toast.type === "success" ? "#10b981" : "#ef4444";
+  const icon = toast.type === "success" ? "check-circle" : "alert-circle";
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: "absolute",
+        top: Platform.OS === "ios" ? 40 : 24,
+        left: 16,
+        right: 16,
+        zIndex: 999,
+      }}
+    >
+      <Animated.View
+        style={{
+          transform: [{ translateY }, { scale }],
+          opacity,
+        }}
+      >
+        <Pressable
+          onPress={onDismiss}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            borderRadius: 16,
+            backgroundColor: bgColor,
+            shadowColor: "#000",
+            shadowOpacity: 0.3,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 12,
+          }}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Feather name={icon as any} size={20} color="#fff" />
+          </View>
+
+          <View style={{ flex: 1, marginHorizontal: 12 }}>
+            <Text
+              style={{
+                color: "#fff",
+                fontSize: 15,
+                fontWeight: "700",
+                letterSpacing: 0.2,
+              }}
+            >
+              {toast.title}
+            </Text>
+            {toast.message && (
+              <Text
+                style={{
+                  color: "#fff",
+                  fontSize: 13,
+                  marginTop: 2,
+                  opacity: 0.95,
+                  lineHeight: 18,
+                }}
+              >
+                {toast.message}
+              </Text>
+            )}
+          </View>
+
+          <Pressable
+            onPress={onDismiss}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Feather name="x" size={16} color="#fff" />
+          </Pressable>
+
+          <View
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 3,
+              borderBottomLeftRadius: 16,
+              borderBottomRightRadius: 16,
+              backgroundColor: "rgba(255, 255, 255, 0.3)",
+              overflow: "hidden",
+            }}
+          >
+            <ProgressBar duration={3000} />
+          </View>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
+function ProgressBar({ duration }: { duration: number }) {
+  const width = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(width, {
+      toValue: 100,
+      duration,
+      useNativeDriver: false,
+    }).start();
+  }, [duration, width]);
+
+  const widthInterpolated = width.interpolate({
+    inputRange: [0, 100],
+    outputRange: ["0%", "100%"],
+  });
+
+  return (
+    <Animated.View
+      style={{
+        height: "100%",
+        backgroundColor: "rgba(255, 255, 255, 0.5)",
+        width: widthInterpolated,
+      }}
+    />
+  );
+}
+
+
+function useToast() {
+  const [toast, setToast] = useState<ToastState>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback(
+    (config: NonNullable<ToastState>, duration = 3000) => {
+      setToast(config);
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      timeoutRef.current = setTimeout(() => {
+        setToast(null);
+      }, duration);
+    },
+    []
+  );
+
+  const hideToast = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    setToast(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return { toast, showToast, hideToast };
+}
 
 function Stars({ value, size = 14 }: { value: number; size?: number }) {
   const full = Math.floor(value);
@@ -122,14 +367,16 @@ export default function ItemDetail() {
 
   const [item, setItem] = useState<Articulo | null>(null);
   const [rating, setRating] = useState<ReviewAgg>({ avg: 0, count: 0 });
-  const [owner, setOwner] = useState<{ nombre: string; avatar?: string | null }>(
-    {
-      nombre: "Usuario",
-      avatar: null,
-    }
-  );
+  const [owner, setOwner] = useState<{
+    nombre: string;
+    avatar?: string | null;
+  }>({
+    nombre: "Usuario",
+    avatar: null,
+  });
   const [loading, setLoading] = useState(true);
   const [addingToCart, setAddingToCart] = useState(false);
+  const { toast, showToast, hideToast } = useToast();
 
   const fetchAll = useCallback(async () => {
     if (!id) return;
@@ -238,85 +485,99 @@ export default function ItemDetail() {
       : "#9ca3af";
 
   const handleReserve = async () => {
-  if (!item) return;
+    if (!item) return;
 
-  try {
-    setAddingToCart(true);
+    try {
+      setAddingToCart(true);
 
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) {
-      Alert.alert(
-        "Inicia sesión",
-        "Necesitas iniciar sesión para agregar al carrito.",
-        [{ text: "Ir a login", onPress: () => router.push("/auth/login") }]
-      );
-      return;
-    }
-
-    const perfilId = authData.user.id;
-    const cartId = await getOrCreateCartId(perfilId);
-
-    const periodo_cantidad = Math.max(1, item.periodo_cantidad ?? 1);
-
-    const metodo: DeliveryMethod = item.solo_retiro
-      ? "Pickup"
-      : item.entrega_disponible
-      ? "Envio"
-      : "Entrega";
-
-    const { error: insertErr } = await supabase.from("cart_items").insert({
-      id_carrito: cartId,
-      id_articulo: item.id,
-      titulo_cached: item.titulo,
-      image_url: item.url_publica,
-      precio: item.precio,
-      unidad: item.unidad_precio,
-      periodo_cantidad,
-      qty: 1,
-      metodo,
-      tarifa_entrega: item.tarifa_entrega ?? 0,
-      solo_retiro: item.solo_retiro ?? false,
-      entrega_disponible: item.entrega_disponible ?? false,
-      disponible: true,
-    });
-
-    if (insertErr) throw insertErr;
-
-    // 🔔 Notificación al propietario (si no es el mismo usuario)
-    if (item.id_propietario && item.id_propietario !== perfilId) {
-      const { data: ownerPerfil, error: ownerErr } = await supabase
-        .from("perfiles")
-        .select("expo_push_token, nombre")
-        .eq("id", item.id_propietario)
-        .maybeSingle();
-
-      if (!ownerErr && ownerPerfil?.expo_push_token) {
-        const renterName =
-          (authData.user.user_metadata as any)?.nombre ||
-          authData.user.email ||
-          "Un usuario";
-
-        await sendPushNotification(
-          ownerPerfil.expo_push_token,
-          "Tu artículo ha sido reservado",
-          `${renterName} agregó "${item.titulo}" a su carrito.`,
-          {
-            type: "cart_item_added",
-            articuloId: item.id,
-            ownerId: item.id_propietario,
-          }
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !authData?.user) {
+        Alert.alert(
+          "Inicia sesión",
+          "Necesitas iniciar sesión para agregar al carrito.",
+          [{ text: "Ir a login", onPress: () => router.push("/auth/login") }]
         );
+        return;
       }
+
+      const perfilId = authData.user.id;
+      const cartId = await getOrCreateCartId(perfilId);
+
+      const periodo_cantidad = Math.max(1, item.periodo_cantidad ?? 1);
+
+      const metodo: DeliveryMethod = item.solo_retiro
+        ? "Pickup"
+        : item.entrega_disponible
+        ? "Envio"
+        : "Entrega";
+
+      const { error: insertErr } = await supabase.from("cart_items").insert({
+        id_carrito: cartId,
+        id_articulo: item.id,
+        titulo_cached: item.titulo,
+        image_url: item.url_publica,
+        precio: item.precio,
+        unidad: item.unidad_precio,
+        periodo_cantidad,
+        qty: 1,
+        metodo,
+        tarifa_entrega: item.tarifa_entrega ?? 0,
+        solo_retiro: item.solo_retiro ?? false,
+        entrega_disponible: item.entrega_disponible ?? false,
+        disponible: true,
+      });
+
+      if (insertErr) throw insertErr;
+
+      if (item.id_propietario && item.id_propietario !== perfilId) {
+        const { data: ownerPerfil, error: ownerErr } = await supabase
+          .from("perfiles")
+          .select("expo_push_token, nombre")
+          .eq("id", item.id_propietario)
+          .maybeSingle();
+
+        if (!ownerErr && ownerPerfil?.expo_push_token) {
+          const renterName =
+            (authData.user.user_metadata as any)?.nombre ||
+            authData.user.email ||
+            "Un usuario";
+
+          await sendPushNotification(
+            ownerPerfil.expo_push_token,
+            "Tu artículo ha sido reservado",
+            `${renterName} agregó "${item.titulo}" a su carrito.`,
+            {
+              type: "cart_item_added",
+              articuloId: item.id,
+              ownerId: item.id_propietario,
+            }
+          );
+        }
+      }
+
+      showToast(
+        {
+          type: "success",
+          title: "Artículo reservado",
+          message: "Se agregó a tu carrito correctamente.",
+        },
+        2500
+      );
+    } catch (e: any) {
+      console.error(e);
+
+      showToast(
+        {
+          type: "error",
+          title: "Error al reservar",
+          message: e?.message ?? "No se pudo agregar al carrito.",
+        },
+        3000
+      );
+    } finally {
+      setAddingToCart(false);
     }
-
-    Alert.alert("Añadido al carrito", "El artículo se agregó a tu carrito.");
-  } catch (e: any) {
-    Alert.alert("Error", e?.message ?? "No se pudo agregar al carrito.");
-  } finally {
-    setAddingToCart(false);
-  }
-};
-
+  };
 
   return (
     <View
@@ -324,6 +585,8 @@ export default function ItemDetail() {
       style={{ backgroundColor: COLORS.bg, paddingTop: insets.top }}
     >
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
+
+      <AnimatedToast toast={toast} onDismiss={hideToast} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -463,7 +726,6 @@ export default function ItemDetail() {
                 </Text>
                 <Text className="text-xs" style={{ color: COLORS.subtext }}>
                   Propietario verificado
-                  
                 </Text>
               </View>
             </View>

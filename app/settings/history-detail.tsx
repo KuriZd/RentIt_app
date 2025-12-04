@@ -25,7 +25,13 @@ type ReservationRow = {
     fecha_fin: string | null;
     total: number | null;
     estado_reservacion: string | null;
-    articulos: { titulo: string | null; url_publica: string | null }[] | null;
+};
+
+type ArticleRow = {
+    id: number;
+    titulo: string | null;
+    url_publica: string | null;
+    id_propietario: string | null;
 };
 
 type UiReservationDetail = {
@@ -37,6 +43,7 @@ type UiReservationDetail = {
     statusColor: string;
     deliveryLabel: string;
     extraInfo: string;
+    ownerId: string | null;
 };
 
 function formatShortDate(iso: string | null) {
@@ -60,7 +67,9 @@ function formatShortDate(iso: string | null) {
     return `${d.getDate()} de ${meses[d.getMonth()]}`;
 }
 
-function buildStatus(r: ReservationRow): {
+function buildStatus(
+    r: ReservationRow
+): {
     label: string;
     color: string;
     subtitle: string;
@@ -142,6 +151,11 @@ function buildStatus(r: ReservationRow): {
     };
 }
 
+// room_id determinista entre 2 usuarios
+function buildRoomId(a: string, b: string) {
+    return [a, b].sort().join(":");
+}
+
 export default function ReservationDetail() {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -186,7 +200,8 @@ export default function ReservationDetail() {
 
             const userId = auth.user.id;
 
-            const { data, error } = await supabase
+            // 1) Reservación
+            const { data: resData, error: resErr } = await supabase
                 .from("reservaciones")
                 .select(
                     `
@@ -196,29 +211,43 @@ export default function ReservationDetail() {
           fecha_inicio,
           fecha_fin,
           total,
-          estado_reservacion,
-          articulos (
-            titulo,
-            url_publica
-          )
+          estado_reservacion
         `
                 )
                 .eq("id", Number(id))
                 .eq("id_usuario", userId)
                 .maybeSingle();
 
-            if (error) throw error;
-            if (!data) {
+            if (resErr) throw resErr;
+            if (!resData) {
                 setReservation(null);
                 return;
             }
 
-            const r = data as ReservationRow;
+            const r = resData as ReservationRow;
 
-            const art = r.articulos && r.articulos.length > 0 ? r.articulos[0] : null;
+            // 2) Artículo
+            const { data: artData, error: artErr } = await supabase
+                .from("articulos")
+                .select(
+                    `
+          id,
+          titulo,
+          url_publica,
+          id_propietario
+        `
+                )
+                .eq("id", r.id_articulo)
+                .maybeSingle();
+
+            if (artErr) throw artErr;
+
+            const art = artData as ArticleRow | null;
+
             const titulo = art?.titulo || "Artículo rentado";
             const imageUrl =
                 art?.url_publica || "https://picsum.photos/seed/rentit-history/300/300";
+            const ownerId = art?.id_propietario ?? null;
 
             const status = buildStatus(r);
 
@@ -236,8 +265,10 @@ export default function ReservationDetail() {
                     : status.label;
 
             const extraParts: string[] = [];
-            if (r.fecha_inicio) extraParts.push(`Inicio: ${formatShortDate(r.fecha_inicio)}`);
-            if (r.fecha_fin) extraParts.push(`Fin: ${formatShortDate(r.fecha_fin)}`);
+            if (r.fecha_inicio)
+                extraParts.push(`Inicio: ${formatShortDate(r.fecha_inicio)}`);
+            if (r.fecha_fin)
+                extraParts.push(`Fin: ${formatShortDate(r.fecha_fin)}`);
             if (totalFmt) extraParts.push(`Total: ${totalFmt}`);
             const extraInfo = extraParts.join(" · ");
 
@@ -250,6 +281,7 @@ export default function ReservationDetail() {
                 statusColor: status.color,
                 deliveryLabel,
                 extraInfo,
+                ownerId,
             });
         } catch (e: any) {
             console.error(e);
@@ -289,6 +321,33 @@ export default function ReservationDetail() {
         });
     };
 
+    const handleMessageOwner = async () => {
+        if (!reservation?.ownerId) {
+            Alert.alert(
+                "No disponible",
+                "No se encontró el propietario de este artículo."
+            );
+            return;
+        }
+
+        const { data, error } = await supabase.auth.getUser();
+        if (error || !data.user) {
+            Alert.alert(
+                "Inicia sesión",
+                "Debes iniciar sesión para enviar mensajes."
+            );
+            return;
+        }
+
+        const myId = data.user.id;
+        const roomId = buildRoomId(myId, reservation.ownerId);
+
+        router.push({
+            pathname: "/messages/[id]",
+            params: { id: roomId },
+        });
+    };
+
     return (
         <View
             className="flex-1"
@@ -315,10 +374,7 @@ export default function ReservationDetail() {
             {loading ? (
                 <View className="flex-1 items-center justify-center">
                     <ActivityIndicator />
-                    <Text
-                        className="mt-3 text-sm"
-                        style={{ color: COLORS.subtext }}
-                    >
+                    <Text className="mt-3 text-sm" style={{ color: COLORS.subtext }}>
                         Cargando información…
                     </Text>
                 </View>
@@ -340,6 +396,7 @@ export default function ReservationDetail() {
                     }}
                 >
                     <View className="w-full max-w-xl self-center">
+                        {/* Tarjeta principal */}
                         <View
                             className="rounded-2xl mb-4 overflow-hidden"
                             style={{
@@ -392,10 +449,7 @@ export default function ReservationDetail() {
                             />
 
                             <Pressable className="flex-row items-center justify-between px-4 py-3">
-                                <Text
-                                    className="text-sm"
-                                    style={{ color: COLORS.text }}
-                                >
+                                <Text className="text-sm" style={{ color: COLORS.text }}>
                                     Comprar nuevamente
                                 </Text>
                                 <Feather
@@ -404,8 +458,27 @@ export default function ReservationDetail() {
                                     color={COLORS.iconMuted}
                                 />
                             </Pressable>
+
+                            <Pressable
+                                className="flex-row items-center justify-between px-4 py-3"
+                                style={{
+                                    borderTopWidth: 1,
+                                    borderTopColor: COLORS.ring,
+                                }}
+                                onPress={handleMessageOwner}
+                            >
+                                <Text className="text-sm" style={{ color: COLORS.text }}>
+                                    Enviar mensaje al propietario
+                                </Text>
+                                <Feather
+                                    name="message-circle"
+                                    size={18}
+                                    color={COLORS.iconMuted}
+                                />
+                            </Pressable>
                         </View>
 
+                        {/* Estado de la renta */}
                         <View
                             className="rounded-2xl p-3 mb-5"
                             style={{
@@ -430,10 +503,7 @@ export default function ReservationDetail() {
                                     >
                                         {reservation.deliveryLabel}
                                     </Text>
-                                    <Text
-                                        className="text-xs"
-                                        style={{ color: COLORS.subtext }}
-                                    >
+                                    <Text className="text-xs" style={{ color: COLORS.subtext }}>
                                         {reservation.statusSubtitle}
                                     </Text>
                                     {reservation.extraInfo ? (
@@ -448,6 +518,7 @@ export default function ReservationDetail() {
                             </View>
                         </View>
 
+                        {/* Opiniones */}
                         <View
                             className="rounded-2xl overflow-hidden"
                             style={{
@@ -467,10 +538,7 @@ export default function ReservationDetail() {
                                 className="flex-row items-center justify-between px-4 py-3"
                                 onPress={goToProductReview}
                             >
-                                <Text
-                                    className="text-sm"
-                                    style={{ color: COLORS.text }}
-                                >
+                                <Text className="text-sm" style={{ color: COLORS.text }}>
                                     Escribir una opinión sobre el producto
                                 </Text>
                                 <Feather
@@ -487,10 +555,7 @@ export default function ReservationDetail() {
                                     borderTopColor: COLORS.ring,
                                 }}
                             >
-                                <Text
-                                    className="text-sm"
-                                    style={{ color: COLORS.text }}
-                                >
+                                <Text className="text-sm" style={{ color: COLORS.text }}>
                                     Crea una reseña en video
                                 </Text>
                                 <Feather
@@ -508,10 +573,7 @@ export default function ReservationDetail() {
                                 }}
                                 onPress={goToSellerReview}
                             >
-                                <Text
-                                    className="text-sm"
-                                    style={{ color: COLORS.text }}
-                                >
+                                <Text className="text-sm" style={{ color: COLORS.text }}>
                                     Evaluar al vendedor
                                 </Text>
                                 <Feather

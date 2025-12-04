@@ -1,10 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
   Image,
   Modal,
@@ -41,6 +42,243 @@ type FieldProps = {
     | "number-pad"
     | "decimal-pad";
 };
+
+type ToastState =
+  | {
+      type: "success" | "error";
+      title: string;
+      message?: string;
+    }
+  | null;
+
+type ToastProps = {
+  toast: ToastState;
+  onDismiss: () => void;
+};
+
+export function AnimatedToast({ toast, onDismiss }: ToastProps) {
+  const translateY = useRef(new Animated.Value(-100)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    if (toast) {
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 65,
+          friction: 8,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scale, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 80,
+          friction: 7,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(translateY, {
+          toValue: -100,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 0.9,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [toast, translateY, opacity, scale]);
+
+  if (!toast) return null;
+
+  const bgColor = toast.type === "success" ? "#10b981" : "#ef4444";
+  const icon = toast.type === "success" ? "check-circle" : "alert-circle";
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: "absolute",
+        top: Platform.OS === "ios" ? 60 : 40,
+        left: 16,
+        right: 16,
+        zIndex: 999,
+      }}
+    >
+      <Animated.View
+        style={{
+          transform: [{ translateY }, { scale }],
+          opacity,
+        }}
+      >
+        <Pressable
+          onPress={onDismiss}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            borderRadius: 16,
+            backgroundColor: bgColor,
+            shadowColor: "#000",
+            shadowOpacity: 0.3,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 12,
+          }}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Feather name={icon as any} size={20} color="#fff" />
+          </View>
+
+          <View style={{ flex: 1, marginHorizontal: 12 }}>
+            <Text
+              style={{
+                color: "#fff",
+                fontSize: 15,
+                fontWeight: "700",
+                letterSpacing: 0.2,
+              }}
+            >
+              {toast.title}
+            </Text>
+            {toast.message && (
+              <Text
+                style={{
+                  color: "#fff",
+                  fontSize: 13,
+                  marginTop: 2,
+                  opacity: 0.95,
+                  lineHeight: 18,
+                }}
+              >
+                {toast.message}
+              </Text>
+            )}
+          </View>
+
+          <Pressable
+            onPress={onDismiss}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Feather name="x" size={16} color="#fff" />
+          </Pressable>
+
+          <View
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 3,
+              borderBottomLeftRadius: 16,
+              borderBottomRightRadius: 16,
+              backgroundColor: "rgba(255, 255, 255, 0.3)",
+              overflow: "hidden",
+            }}
+          >
+            <ProgressBar duration={3000} />
+          </View>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
+function ProgressBar({ duration }: { duration: number }) {
+  const width = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(width, {
+      toValue: 100,
+      duration,
+      useNativeDriver: false,
+    }).start();
+  }, [duration, width]);
+
+  const widthInterpolated = width.interpolate({
+    inputRange: [0, 100],
+    outputRange: ["0%", "100%"],
+  });
+
+  return (
+    <Animated.View
+      style={{
+        height: "100%",
+        backgroundColor: "rgba(255, 255, 255, 0.5)",
+        width: widthInterpolated,
+      }}
+    />
+  );
+}
+
+export function useToast() {
+  const [toast, setToast] = React.useState<ToastState>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = React.useCallback(
+    (config: NonNullable<ToastState>, duration = 3000) => {
+      setToast(config);
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      timeoutRef.current = setTimeout(() => {
+        setToast(null);
+      }, duration);
+    },
+    []
+  );
+
+  const hideToast = React.useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    setToast(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return { toast, showToast, hideToast };
+}
 
 /* ---------------- Select con Modal ---------------- */
 function Select({
@@ -238,8 +476,8 @@ export default function ProfileEditScreen() {
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const { toast, showToast, hideToast } = useToast();
 
-  // Estados del formulario
   const [fullname, setFullname] = useState("");
   const [curp, setCurp] = useState("");
   const [email, setEmail] = useState("");
@@ -251,14 +489,13 @@ export default function ProfileEditScreen() {
   const [phone, setPhone] = useState("");
   const [marital, setMarital] = useState("");
 
-  // Fecha de nacimiento
   const now = new Date();
   const years = useMemo<SelectItem[]>(() => {
     const arr: SelectItem[] = [];
     for (let y = now.getFullYear(); y >= now.getFullYear() - 100; y--)
       arr.push({ label: String(y), value: String(y) });
     return arr;
-  }, []);
+  }, [now]);
   const months = useMemo<SelectItem[]>(
     () =>
       [
@@ -299,7 +536,6 @@ export default function ProfileEditScreen() {
 
   const onlyDigits = (s: string) => s.replace(/[^\d]/g, "");
 
-  /* ====== CARGA INICIAL DESDE SUPABASE (tabla 'perfiles') ====== */
   useEffect(() => {
     let alive = true;
     async function load() {
@@ -362,7 +598,6 @@ export default function ProfileEditScreen() {
     };
   }, [router]);
 
-  /* ====== PICKER AVATAR + UPLOAD ====== */
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -379,12 +614,11 @@ export default function ProfileEditScreen() {
       selectionLimit: 1,
     });
     if (!result.canceled && result.assets.length > 0) {
-      setAvatarUri(result.assets[0].uri); // local URI; se sube al guardar
+      setAvatarUri(result.assets[0].uri);
     }
   };
 
   const uploadAvatarToSupabase = async (userId: string, imageUri: string) => {
-    // si ya es una URL http(s) asumimos que ya está en storage
     if (/^https?:\/\//i.test(imageUri)) return imageUri;
 
     const res = await fetch(imageUri);
@@ -404,7 +638,6 @@ export default function ProfileEditScreen() {
     return data.publicUrl as string;
   };
 
-  /* ======================= GUARDAR EN SUPABASE ======================= */
   async function onSave() {
     const errs: string[] = [];
     if (!fullname.trim()) errs.push("Nombre completo");
@@ -432,7 +665,6 @@ export default function ProfileEditScreen() {
     try {
       setSaving(true);
 
-      //Subir avatar
       let avatar_url: string | null = avatarUri || null;
       if (avatarUri && !/^https?:\/\//i.test(avatarUri)) {
         avatar_url = await uploadAvatarToSupabase(user.id, avatarUri);
@@ -466,11 +698,30 @@ export default function ProfileEditScreen() {
       if (error) throw error;
 
       if (avatar_url) setAvatarUri(avatar_url);
-      Alert.alert("Guardado", "Tu perfil se actualizó correctamente.");
-      router.back();
+
+      showToast(
+        {
+          type: "success",
+          title: "Perfil actualizado",
+          message: "Tu información se guardó correctamente.",
+        },
+        2000
+      );
+
+      setTimeout(() => {
+        router.back();
+      }, 2000);
     } catch (e: any) {
       console.error(e);
-      Alert.alert("No se pudo guardar", e?.message ?? "Inténtalo más tarde.");
+
+      showToast(
+        {
+          type: "error",
+          title: "No se pudo guardar",
+          message: e?.message ?? "Inténtalo más tarde.",
+        },
+        3000
+      );
     } finally {
       setSaving(false);
     }
@@ -497,7 +748,6 @@ export default function ProfileEditScreen() {
           paddingBottom: 140,
         }}
       >
-        {/* Header */}
         <View className="mb-4 flex-row items-center">
           <Pressable
             onPress={() => router.back()}
@@ -514,7 +764,6 @@ export default function ProfileEditScreen() {
           </Text>
         </View>
 
-        {/* Avatar */}
         <View className="items-center mb-6">
           <Pressable onPress={pickImage} className="relative">
             <Image
@@ -531,7 +780,6 @@ export default function ProfileEditScreen() {
           </Pressable>
         </View>
 
-        {/* Campos */}
         <Field
           label="Full name"
           placeholder="Nombre completo"
@@ -545,7 +793,6 @@ export default function ProfileEditScreen() {
           onChangeText={(t) => setCurp(t.toUpperCase())}
         />
 
-        {/* Fecha de nacimiento */}
         <Text className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           Date of birth
         </Text>
@@ -630,7 +877,6 @@ export default function ProfileEditScreen() {
           keyboardType="phone-pad"
         />
 
-        {/* Guardar */}
         <Pressable
           className="mt-2 h-12 items-center justify-center rounded-xl active:opacity-90"
           onPress={onSave}
@@ -651,6 +897,8 @@ export default function ProfileEditScreen() {
           <ActivityIndicator size="large" />
         </View>
       )}
+
+      <AnimatedToast toast={toast} onDismiss={hideToast} />
     </SafeAreaView>
   );
 }

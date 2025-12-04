@@ -1,10 +1,18 @@
 // app/cart/index.tsx
 import { Feather } from "@expo/vector-icons";
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -43,6 +51,19 @@ type CartTotalsRow = {
   id_perfil: string;
   subtotal: number;
   items_count: number;
+};
+
+type ToastState =
+  | {
+      type: "success" | "error";
+      title: string;
+      message?: string;
+    }
+  | null;
+
+type ToastProps = {
+  toast: ToastState;
+  onDismiss: () => void;
 };
 
 function addPeriods(base: Date, unit: UnidadPrecio, periods: number): Date {
@@ -137,6 +158,231 @@ function rowToUI(row: any): Item {
     pickupOnly: !!row.solo_retiro,
     deliveryAvailable: !!row.entrega_disponible,
   };
+}
+
+function AnimatedToast({ toast, onDismiss }: ToastProps) {
+  const translateY = useRef(new Animated.Value(-100)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    if (toast) {
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 65,
+          friction: 8,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scale, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 80,
+          friction: 7,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(translateY, {
+          toValue: -100,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 0.9,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [toast, translateY, opacity, scale]);
+
+  if (!toast) return null;
+
+  const bgColor = toast.type === "success" ? "#10b981" : "#ef4444";
+  const icon = toast.type === "success" ? "check-circle" : "alert-circle";
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: "absolute",
+        // 🔽 Lo movemos más abajo, cerca del título "Shopping Cart"
+        top: Platform.OS === "ios" ? 24 : 16,
+        left: 16,
+        right: 16,
+        zIndex: 999,
+      }}
+    >
+      <Animated.View
+        style={{
+          transform: [{ translateY }, { scale }],
+          opacity,
+        }}
+      >
+        <Pressable
+          onPress={onDismiss}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            borderRadius: 16,
+            backgroundColor: bgColor,
+            shadowColor: "#000",
+            shadowOpacity: 0.3,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 12,
+          }}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Feather name={icon as any} size={20} color="#fff" />
+          </View>
+
+          <View style={{ flex: 1, marginHorizontal: 12 }}>
+            <Text
+              style={{
+                color: "#fff",
+                fontSize: 15,
+                fontWeight: "700",
+                letterSpacing: 0.2,
+              }}
+            >
+              {toast.title}
+            </Text>
+            {toast.message && (
+              <Text
+                style={{
+                  color: "#fff",
+                  fontSize: 13,
+                  marginTop: 2,
+                  opacity: 0.95,
+                  lineHeight: 18,
+                }}
+              >
+                {toast.message}
+              </Text>
+            )}
+          </View>
+
+          <Pressable
+            onPress={onDismiss}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Feather name="x" size={16} color="#fff" />
+          </Pressable>
+
+          <View
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 3,
+              borderBottomLeftRadius: 16,
+              borderBottomRightRadius: 16,
+              backgroundColor: "rgba(255, 255, 255, 0.3)",
+              overflow: "hidden",
+            }}
+          >
+            <ProgressBar duration={3000} />
+          </View>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
+function ProgressBar({ duration }: { duration: number }) {
+  const width = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(width, {
+      toValue: 100,
+      duration,
+      useNativeDriver: false,
+    }).start();
+  }, [duration, width]);
+
+  const widthInterpolated = width.interpolate({
+    inputRange: [0, 100],
+    outputRange: ["0%", "100%"],
+  });
+
+  return (
+    <Animated.View
+      style={{
+        height: "100%",
+        backgroundColor: "rgba(255, 255, 255, 0.5)",
+        width: widthInterpolated,
+      }}
+    />
+  );
+}
+
+function useToast() {
+  const [toast, setToast] = useState<ToastState>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback(
+    (config: NonNullable<ToastState>, duration = 3000) => {
+      setToast(config);
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      timeoutRef.current = setTimeout(() => {
+        setToast(null);
+      }, duration);
+    },
+    []
+  );
+
+  const hideToast = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    setToast(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return { toast, showToast, hideToast };
 }
 
 function QtyControl({
@@ -357,6 +603,7 @@ export default function ShoppingCartScreen() {
   const [cart, setCart] = useState<Item[]>([]);
   const [saved, setSaved] = useState<Item[]>([]);
   const [subtotal, setSubtotal] = useState(0);
+  const { toast, showToast, hideToast } = useToast();
 
   useEffect(() => {
     (async () => {
@@ -433,31 +680,96 @@ export default function ShoppingCartScreen() {
       .from("cart_items")
       .update({ qty })
       .eq("id", id);
-    if (error) Alert.alert("Error", "No se pudo actualizar la cantidad");
+    if (error) {
+      showToast(
+        {
+          type: "error",
+          title: "Error al actualizar",
+          message: "No se pudo actualizar la cantidad.",
+        },
+        3000
+      );
+    }
   };
 
   const removeFromCart = async (id: string) => {
     const item = cart.find((x) => x.id === id);
-    setCart((prev) => prev.filter((it) => it.id !== id));
-    if (item) setSubtotal((p) => p - item.price * (item.qty || 1));
-    const { error } = await supabase.from("cart_items").delete().eq("id", id);
-    if (error) Alert.alert("Error", "No se pudo eliminar el artículo");
+    try {
+      const { error } = await supabase.from("cart_items").delete().eq("id", id);
+      if (error) throw error;
+
+      setCart((prev) => prev.filter((it) => it.id !== id));
+      if (item) {
+        setSubtotal((p) => p - item.price * (item.qty || 1));
+      }
+
+      showToast(
+        {
+          type: "success",
+          title: "Artículo eliminado",
+          message: item
+            ? `"${item.title}" se quitó del carrito.`
+            : "El artículo se quitó del carrito.",
+        },
+        2500
+      );
+    } catch (e: any) {
+      showToast(
+        {
+          type: "error",
+          title: "Error al eliminar",
+          message: e?.message ?? "No se pudo eliminar el artículo.",
+        },
+        3000
+      );
+    }
   };
 
   const saveForLater = (it: Item) => {
     setCart((prev) => prev.filter((x) => x.id !== it.id));
     setSaved((prev) => [it, ...prev]);
     setSubtotal((p) => p - it.price * (it.qty || 1));
+
+    showToast(
+      {
+        type: "success",
+        title: "Guardado para más tarde",
+        message: `"${it.title}" se movió a guardados.`,
+      },
+      2500
+    );
   };
 
   const moveToCart = (it: Item) => {
     setSaved((prev) => prev.filter((x) => x.id !== it.id));
     setCart((prev) => [it, ...prev]);
     setSubtotal((p) => p + it.price * (it.qty || 1));
+
+    showToast(
+      {
+        type: "success",
+        title: "Artículo en el carrito",
+        message: `"${it.title}" se movió al carrito.`,
+      },
+      2500
+    );
   };
 
-  const removeFromSaved = (id: string) =>
+  const removeFromSaved = (id: string) => {
+    const item = saved.find((x) => x.id === id);
     setSaved((prev) => prev.filter((it) => it.id !== id));
+
+    showToast(
+      {
+        type: "success",
+        title: "Eliminado de guardados",
+        message: item
+          ? `"${item.title}" se eliminó de guardados.`
+          : "El artículo se eliminó de guardados.",
+      },
+      2500
+    );
+  };
 
   const handleCheckout = async () => {
     if (!cart.length) {
@@ -536,12 +848,24 @@ export default function ShoppingCartScreen() {
 
       setCart([]);
       setSubtotal(0);
-      Alert.alert(
-        "Reservación creada",
-        "Tus artículos han sido agregados a tus reservaciones."
+
+      showToast(
+        {
+          type: "success",
+          title: "Reservación creada",
+          message: "Tus artículos se movieron a reservaciones.",
+        },
+        3000
       );
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo procesar el pago.");
+      showToast(
+        {
+          type: "error",
+          title: "Error al pagar",
+          message: e?.message ?? "No se pudo procesar el pago.",
+        },
+        3000
+      );
     } finally {
       setCheckingOut(false);
     }
@@ -562,6 +886,8 @@ export default function ShoppingCartScreen() {
 
   return (
     <View className="flex-1 mt-10" style={{ backgroundColor: C.bg }}>
+      <AnimatedToast toast={toast} onDismiss={hideToast} />
+
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
         <Text
           className="text-3xl font-extrabold mb-4"
@@ -602,7 +928,9 @@ export default function ShoppingCartScreen() {
             {checkingOut ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
-              <Text className="text-white font-semibold">Proceder al pago</Text>
+              <Text className="text-white font-semibold">
+                Proceder al pago
+              </Text>
             )}
           </Pressable>
         </View>
