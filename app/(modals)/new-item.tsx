@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import React, { useMemo, useState } from "react";
+import * as Notifications from "expo-notifications";
+import React, { useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -48,6 +49,14 @@ type Props = {
 
 const mapPeriodToUnidad = (p: Period): UnidadPrecio =>
   p === "hour" ? "hora" : p === "day" ? "dia" : "semana";
+
+type ToastState =
+  | {
+      type: "success" | "error";
+      title: string;
+      message?: string;
+    }
+  | null;
 
 export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
   const scheme = useColorScheme();
@@ -100,6 +109,10 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
   const [showCurrencyMenu, setShowCurrencyMenu] = useState(false);
 
   const [images, setImages] = useState<LocalAsset[]>([]);
+  const [toast, setToast] = useState<ToastState>(null);
+
+  // 🔒 Evitar submit doble
+  const submittingRef = useRef(false);
 
   const pickImages = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -179,28 +192,69 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
 
   const onlyInt = (s: string) => s.replace(/[^\d]/g, "");
 
+  const resetForm = () => {
+    setTitle("");
+    setPrice("");
+    setPeriod("day");
+    setPeriodQty("1");
+    setCurrency("USD");
+    setCategory(null);
+    setDesc("");
+    setEstadoArticulo("como_nuevo");
+    setEstadoPublicacion("publicado");
+    setValorReposicion("");
+    setDepositoSeguridad("");
+    setDuracionMinHoras("");
+    setDuracionMaxDias("");
+    setCantidadDisponible("1");
+    setDeliveryMode("retiro");
+    setTarifaEntrega("");
+    setLongitud("");
+    setImages([]);
+  };
+
   const submit = async () => {
-    if (loading) return;
+    if (loading || submittingRef.current) return;
+
     if (!title.trim()) {
-      Alert.alert("Falta título", "Agrega un título para tu artículo.");
+      setToast({
+        type: "error",
+        title: "Falta título",
+        message: "Agrega un título para tu artículo.",
+      });
+      setTimeout(() => setToast(null), 2500);
       return;
     }
+
     const priceNum = Number(price);
     if (!price || isNaN(priceNum) || priceNum <= 0) {
-      Alert.alert("Precio inválido", "Ingresa un número mayor a 0.");
+      setToast({
+        type: "error",
+        title: "Precio inválido",
+        message: "Ingresa un número mayor a 0.",
+      });
+      setTimeout(() => setToast(null), 2500);
       return;
     }
+
     const qty = Math.max(1, parseInt(onlyInt(periodQty || "1"), 10));
     if (
       deliveryMode === "entrega" &&
       (!tarifaEntrega || Number(tarifaEntrega) < 0)
     ) {
-      Alert.alert("Tarifa de entrega", "Agrega una tarifa válida.");
+      setToast({
+        type: "error",
+        title: "Tarifa de entrega",
+        message: "Agrega una tarifa válida.",
+      });
+      setTimeout(() => setToast(null), 2500);
       return;
     }
 
     try {
       setLoading(true);
+      submittingRef.current = true;
+
       const { data: authData, error: userErr } = await supabase.auth.getUser();
       if (userErr || !authData.user) throw new Error("No hay sesión activa.");
       const userId = authData.user.id;
@@ -280,38 +334,56 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
         });
       }
 
-      Alert.alert(
-        estadoPublicacion === "publicado" ? "Publicado" : "Guardado",
-        estadoPublicacion === "publicado"
-          ? "Tu artículo se publicó correctamente."
-          : "Tu borrador se guardó correctamente."
-      );
-      onClose();
-      setTitle("");
-      setPrice("");
-      setPeriod("day");
-      setPeriodQty("1");
-      setCurrency("USD");
-      setCategory(null);
-      setDesc("");
-      setEstadoArticulo("como_nuevo");
-      setEstadoPublicacion("publicado");
-      setValorReposicion("");
-      setDepositoSeguridad("");
-      setDuracionMinHoras("");
-      setDuracionMaxDias("");
-      setCantidadDisponible("1");
-      setDeliveryMode("retiro");
-      setTarifaEntrega("");
-      setLongitud("");
-      setImages([]);
+      // Notificación local (si la quieres quitar, comenta este bloque)
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title:
+              estadoPublicacion === "publicado"
+                ? "Artículo publicado"
+                : "Borrador guardado",
+            body:
+              estadoPublicacion === "publicado"
+                ? `Tu artículo "${title.trim()}" ya está disponible.`
+                : "Tu borrador se guardó correctamente.",
+            data: { articuloId },
+          },
+          trigger: null,
+        });
+      } catch (notifErr) {
+        console.log("Error enviando notificación local", notifErr);
+      }
+
+      setToast({
+        type: "success",
+        title:
+          estadoPublicacion === "publicado"
+            ? "Artículo publicado"
+            : "Borrador guardado",
+        message:
+          estadoPublicacion === "publicado"
+            ? "Tu artículo ahora está disponible para renta."
+            : "Podrás continuar editándolo más tarde.",
+      });
+
+      setTimeout(() => {
+        setToast(null);
+        onClose();
+      }, 2500);
+
+      resetForm();
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo publicar.");
+      setToast({
+        type: "error",
+        title: "Error al publicar",
+        message: e?.message ?? "No se pudo publicar el artículo.",
+      });
+      setTimeout(() => setToast(null), 3000);
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   };
-
   return (
     <Modal
       visible={visible}
@@ -320,17 +392,26 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <Pressable
-        onPress={onClose}
-        className="absolute inset-0"
-        style={{ backgroundColor: COLORS.overlay }}
-      />
+      <View style={{ flex: 1, justifyContent: "flex-end" }}>
+        {/* overlay para cerrar tocando fuera */}
+        <Pressable
+          onPress={onClose}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: COLORS.overlay,
+          }}
+        />
 
       <KeyboardAvoidingView
         className="absolute bottom-0 w-full rounded-t-3xl"
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ height: "80%", backgroundColor: COLORS.sheetBg }}
       >
+
         <ScrollView
           className="flex-1"
           contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 24 }}
@@ -841,32 +922,99 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
             )}
           </View>
 
-          <View className="flex-row justify-between mt-2">
-            <View className="flex-1 mr-2">
-              <Button label="Cancelar" variant="ghost" onPress={onClose} />
-            </View>
-            <View className="flex-1 ml-2">
-              <Button
-                label={
-                  loading
-                    ? "Guardando…"
-                    : estadoPublicacion === "publicado"
+           <View className="flex-row justify-between mt-2">
+              <View className="flex-1 mr-2">
+                <Button label="Cancelar" variant="ghost" onPress={onClose} />
+              </View>
+              <View className="flex-1 ml-2">
+                <Button
+                  label={
+                    loading
+                      ? "Guardando…"
+                      : estadoPublicacion === "publicado"
                       ? "Publicar"
                       : "Guardar borrador"
+                  }
+                  variant="primary"
+                  onPress={submit}
+                />
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+
+        {/* Toast estilizado */}
+        {toast && (
+          <View
+            pointerEvents="box-none"
+            style={{
+              position: "absolute",
+              top: Platform.OS === "ios" ? 60 : 40,
+              left: 16,
+              right: 16,
+              zIndex: 999,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                borderRadius: 18,
+                backgroundColor:
+                  toast.type === "success" ? "#16a34a" : "#dc2626",
+                shadowColor: "#000",
+                shadowOpacity: 0.25,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 10,
+              }}
+            >
+              <Feather
+                name={
+                  toast.type === "success" ? "check-circle" : "alert-triangle"
                 }
-                variant="primary"
-                onPress={submit}
+                size={18}
+                color="#fff"
+                style={{ marginTop: 2, marginRight: 8 }}
               />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontSize: 14,
+                    fontWeight: "600",
+                  }}
+                >
+                  {toast.title}
+                </Text>
+                {toast.message ? (
+                  <Text
+                    style={{
+                      color: "#fff",
+                      fontSize: 12,
+                      marginTop: 4,
+                      opacity: 0.9,
+                    }}
+                  >
+                    {toast.message}
+                  </Text>
+                ) : null}
+              </View>
+              <Pressable onPress={() => setToast(null)}>
+                <Feather name="x" size={16} color="#fff" />
+              </Pressable>
             </View>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        )}
 
-      <CategoriesSheet
-        visible={showCategories}
-        onClose={() => setShowCategories(false)}
-        onSelect={(cat) => setCategory(cat)}
-      />
+        <CategoriesSheet
+          visible={showCategories}
+          onClose={() => setShowCategories(false)}
+          onSelect={(cat) => setCategory(cat)}
+        />
+      </View>
     </Modal>
   );
 }

@@ -463,6 +463,7 @@ export default function ItemDetail() {
                 </Text>
                 <Text className="text-xs" style={{ color: COLORS.subtext }}>
                   Propietario verificado
+                  
                 </Text>
               </View>
             </View>
