@@ -1,3 +1,4 @@
+import { sendPushNotification } from "@/utils/notifications";
 import { supabase } from "@/utils/supabase";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -15,6 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Button from "../../components/ui/button";
+
 
 type UnidadPrecio = "hora" | "dia" | "semana";
 
@@ -236,58 +238,85 @@ export default function ItemDetail() {
       : "#9ca3af";
 
   const handleReserve = async () => {
-    if (!item) return;
+  if (!item) return;
 
-    try {
-      setAddingToCart(true);
+  try {
+    setAddingToCart(true);
 
-      const { data: authData, error: authErr } = await supabase.auth.getUser();
-      if (authErr || !authData?.user) {
-        Alert.alert(
-          "Inicia sesión",
-          "Necesitas iniciar sesión para agregar al carrito.",
-          [{ text: "Ir a login", onPress: () => router.push("/auth/login") }]
-        );
-        return;
-      }
-
-      const perfilId = authData.user.id;
-
-      const cartId = await getOrCreateCartId(perfilId);
-
-      const periodo_cantidad = Math.max(1, item.periodo_cantidad ?? 1);
-
-      const metodo: DeliveryMethod = item.solo_retiro
-        ? "Pickup"
-        : item.entrega_disponible
-        ? "Envio"
-        : "Entrega";
-
-      const { error: insertErr } = await supabase.from("cart_items").insert({
-        id_carrito: cartId,
-        id_articulo: item.id,
-        titulo_cached: item.titulo,
-        image_url: item.url_publica,
-        precio: item.precio,
-        unidad: item.unidad_precio,
-        periodo_cantidad,
-        qty: 1,
-        metodo,
-        tarifa_entrega: item.tarifa_entrega ?? 0,
-        solo_retiro: item.solo_retiro ?? false,
-        entrega_disponible: item.entrega_disponible ?? false,
-        disponible: true,
-      });
-
-      if (insertErr) throw insertErr;
-
-      Alert.alert("Añadido al carrito", "El artículo se agregó a tu carrito.");
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo agregar al carrito.");
-    } finally {
-      setAddingToCart(false);
+    const { data: authData, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !authData?.user) {
+      Alert.alert(
+        "Inicia sesión",
+        "Necesitas iniciar sesión para agregar al carrito.",
+        [{ text: "Ir a login", onPress: () => router.push("/auth/login") }]
+      );
+      return;
     }
-  };
+
+    const perfilId = authData.user.id;
+    const cartId = await getOrCreateCartId(perfilId);
+
+    const periodo_cantidad = Math.max(1, item.periodo_cantidad ?? 1);
+
+    const metodo: DeliveryMethod = item.solo_retiro
+      ? "Pickup"
+      : item.entrega_disponible
+      ? "Envio"
+      : "Entrega";
+
+    const { error: insertErr } = await supabase.from("cart_items").insert({
+      id_carrito: cartId,
+      id_articulo: item.id,
+      titulo_cached: item.titulo,
+      image_url: item.url_publica,
+      precio: item.precio,
+      unidad: item.unidad_precio,
+      periodo_cantidad,
+      qty: 1,
+      metodo,
+      tarifa_entrega: item.tarifa_entrega ?? 0,
+      solo_retiro: item.solo_retiro ?? false,
+      entrega_disponible: item.entrega_disponible ?? false,
+      disponible: true,
+    });
+
+    if (insertErr) throw insertErr;
+
+    // 🔔 Notificación al propietario (si no es el mismo usuario)
+    if (item.id_propietario && item.id_propietario !== perfilId) {
+      const { data: ownerPerfil, error: ownerErr } = await supabase
+        .from("perfiles")
+        .select("expo_push_token, nombre")
+        .eq("id", item.id_propietario)
+        .maybeSingle();
+
+      if (!ownerErr && ownerPerfil?.expo_push_token) {
+        const renterName =
+          (authData.user.user_metadata as any)?.nombre ||
+          authData.user.email ||
+          "Un usuario";
+
+        await sendPushNotification(
+          ownerPerfil.expo_push_token,
+          "Tu artículo ha sido reservado",
+          `${renterName} agregó "${item.titulo}" a su carrito.`,
+          {
+            type: "cart_item_added",
+            articuloId: item.id,
+            ownerId: item.id_propietario,
+          }
+        );
+      }
+    }
+
+    Alert.alert("Añadido al carrito", "El artículo se agregó a tu carrito.");
+  } catch (e: any) {
+    Alert.alert("Error", e?.message ?? "No se pudo agregar al carrito.");
+  } finally {
+    setAddingToCart(false);
+  }
+};
+
 
   return (
     <View
