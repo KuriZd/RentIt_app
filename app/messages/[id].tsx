@@ -13,9 +13,22 @@ import {
   View,
   useColorScheme,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import { supabase } from "../../utils/supabase";
 
 type ReadStatus = "sent" | "delivered" | "read";
+
+type DbMessage = {
+  id: string;
+  room_id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+};
+
 type ChatMessage = {
   id: string;
   from: "me" | "them";
@@ -25,8 +38,14 @@ type ChatMessage = {
   status?: ReadStatus;
 };
 
+type Profile = {
+  id: string;
+  nombre: string | null;
+  avatar_url: string | null;
+};
+
 const AVATAR_FALLBACK =
-  "sandbox:/mnt/data/a7d1b698-f792-420e-92aa-ddc64c723447.png";
+  "https://ui-avatars.com/api/?background=111827&color=fff&name=R";
 
 function useKeyboardHeight() {
   const [height, setHeight] = useState(0);
@@ -152,6 +171,50 @@ function Bubble({ m }: { m: ChatMessage }) {
   );
 }
 
+/** Helpers: DB -> UI **/
+
+function formatDateLabel(date: Date): string {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffMs = today.getTime() - d.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "Hoy";
+  if (diffDays === 1) return "Ayer";
+
+  return date.toLocaleDateString("es-MX", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+function mapDbToChat(row: DbMessage, currentUserId: string | null): ChatMessage {
+  const d = new Date(row.created_at);
+  return {
+    id: row.id,
+    from: row.sender_id === currentUserId ? "me" : "them",
+    text: row.content,
+    time: d.toLocaleTimeString("es-MX", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    date: formatDateLabel(d),
+    status: row.sender_id === currentUserId ? "sent" : undefined,
+  };
+}
+
+// extrae el otro usuario de un room_id tipo "uid1:uid2"
+function getOtherUserId(roomId: string, myId: string | null): string | null {
+  if (!roomId || !myId) return null;
+  if (!roomId.includes(":")) return null;
+  const [a, b] = roomId.split(":");
+  if (!a || !b) return null;
+  if (a === myId) return b;
+  if (b === myId) return a;
+  return null;
+}
+
 export default function ChatDetail() {
   const C = useColors();
   const insets = useSafeAreaInsets();
@@ -162,88 +225,148 @@ export default function ChatDetail() {
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const kb = useKeyboardHeight();
 
-  const chatMeta = useMemo(
+  const [rawMessages, setRawMessages] = useState<DbMessage[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [otherUserId, setOtherUserId] = useState<string | null>(null);
+  const [otherProfile, setOtherProfile] = useState<Profile | null>(null);
+
+  /** 1) cargar usuario + mensajes iniciales **/
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const uid = userData.user?.id ?? null;
+        if (!cancelled) setUserId(uid);
+
+        if (!id) return;
+
+        const { data, error } = await supabase
+          .from("messages")
+          .select("*")
+          .eq("room_id", id)
+          .order("created_at", { ascending: true });
+
+        if (error) {
+          console.error("Error al cargar mensajes", error);
+          return;
+        }
+
+        if (!cancelled && data) {
+          setRawMessages(data as DbMessage[]);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  /** 2) determinar el otro usuario a partir del room_id **/
+  useEffect(() => {
+    if (!id || !userId) return;
+    const other = getOtherUserId(String(id), userId);
+    setOtherUserId(other);
+  }, [id, userId]);
+
+  /** 3) cargar perfil del otro usuario **/
+  useEffect(() => {
+    if (!otherUserId) return;
+    let cancelled = false;
+
+    const loadProfile = async () => {
+      const { data, error } = await supabase
+        .from("perfiles")
+        .select("id, nombre, avatar_url")
+        .eq("id", otherUserId)
+        .maybeSingle();
+
+      if (!cancelled && !error && data) {
+        setOtherProfile(data as Profile);
+      }
+    };
+
+    loadProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [otherUserId]);
+
+  /** 4) suscripción realtime a nuevos mensajes **/
+  useEffect(() => {
+    if (!id) return;
+
+    const channel = supabase
+      .channel(`room:${id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `room_id=eq.${id}`,
+        },
+        (payload) => {
+          const row = payload.new as DbMessage;
+          setRawMessages((prev) => {
+            if (prev.some((m) => m.id === row.id)) return prev;
+            return [...prev, row];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
+
+  /** 5) DB -> UI messages **/
+  const messages = useMemo(
     () =>
-      ({
-        "1": {
-          name: "Yayo (Junior)",
-          avatar: AVATAR_FALLBACK,
-          status: "en línea",
-        },
-        "2": {
-          name: "Giuli🧠 Toscana",
-          avatar: AVATAR_FALLBACK,
-          status: "últ. vez hoy 08:54",
-        },
-        "3": {
-          name: "Soporte RentIt",
-          avatar: AVATAR_FALLBACK,
-          status: "respuesta en minutos",
-        },
-      }[String(id)] || {
-        name: `Chat ${id}`,
-        avatar: AVATAR_FALLBACK,
-        status: "—",
-      }),
-    [id]
+      rawMessages
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() -
+            new Date(b.created_at).getTime()
+        )
+        .map((row) => mapDbToChat(row, userId)),
+    [rawMessages, userId]
   );
 
-  const DATA: ChatMessage[] = useMemo(
-    () =>
-      [
-        {
-          id: "d1",
-          from: "them" as const,
-          text: "Hola, ¿cómo vas?",
-          time: "08:40",
-          date: "Hoy",
-        },
-        {
-          id: "d2",
-          from: "me" as const,
-          text: "Todo bien, cerrando pendientes.",
-          time: "08:41",
-          date: "Hoy",
-          status: "delivered" as const,
-        },
-        {
-          id: "d3",
-          from: "them" as const,
-          text: "¿A qué hora llegan?",
-          time: "10:20",
-          date: "Hoy",
-        },
-        {
-          id: "d4",
-          from: "me" as const,
-          text: "En 15 min. Voy saliendo.",
-          time: "10:22",
-          date: "Hoy",
-          status: "read" as const,
-        },
-      ].reverse(),
-    []
+  // para trabajar cómodo con FlatList invertida
+  const listData = useMemo(
+    () => messages.slice().reverse(),
+    [messages]
   );
-
-  const renderItem = ({ item, index }: { item: ChatMessage; index: number }) => {
-    const prev = DATA[index - 1];
-    const showDate = !prev || prev.date !== item.date;
-    return (
-      <View>
-        {showDate && <DateSeparator label={item.date} />}
-        <Bubble m={item} />
-      </View>
-    );
-  };
 
   const scrollToBottom = (animated = true) => {
     listRef.current?.scrollToOffset({ offset: 0, animated });
   };
 
-  const onSend = () => {
-    if (!value.trim()) return;
+  const onSend = async () => {
+    if (!value.trim() || !id || !userId) return;
+    const content = value.trim();
     setValue("");
-    requestAnimationFrame(() => scrollToBottom());
+    scrollToBottom(false);
+
+    const { error } = await supabase.from("messages").insert({
+      room_id: id,
+      sender_id: userId,
+      content,
+    });
+
+    if (error) {
+      console.error("Error al enviar mensaje", error);
+    }
   };
 
   useEffect(() => {
@@ -253,10 +376,12 @@ export default function ChatDetail() {
     }
   }, [kb]);
 
-  const isOnline = chatMeta.status === "en línea";
+  const displayName = otherProfile?.nombre ?? "Chat";
+  const avatarUri = otherProfile?.avatar_url ?? AVATAR_FALLBACK;
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: C.bg }}>
+      {/* Header */}
       <View
         className="px-3 py-2.5 flex-row items-center justify-between"
         style={{ borderBottomWidth: 1, borderBottomColor: C.ring }}
@@ -266,7 +391,7 @@ export default function ChatDetail() {
             <Feather name="chevron-left" size={26} color={C.icon} />
           </Pressable>
           <Image
-            source={{ uri: chatMeta.avatar }}
+            source={{ uri: avatarUri }}
             className="h-11 w-11 rounded-full mr-2"
             style={{ backgroundColor: C.pill }}
           />
@@ -275,21 +400,11 @@ export default function ChatDetail() {
               className="text-base font-semibold"
               style={{ color: C.text }}
             >
-              {chatMeta.name}
+              {displayName}
             </Text>
-            <View className="flex-row items-center mt-0.5">
-              {chatMeta.status !== "—" && (
-                <View
-                  className="h-2 w-2 rounded-full mr-1"
-                  style={{
-                    backgroundColor: isOnline ? "#22c55e" : C.iconMuted,
-                  }}
-                />
-              )}
-              <Text className="text-xs" style={{ color: C.sub }}>
-                {chatMeta.status}
-              </Text>
-            </View>
+            <Text className="text-xs mt-0.5" style={{ color: C.sub }}>
+              Mensajes privados
+            </Text>
           </View>
         </View>
         <View className="flex-row items-center">
@@ -308,11 +423,21 @@ export default function ChatDetail() {
         </View>
       </View>
 
+      {/* Lista de mensajes */}
       <FlatList
         ref={listRef}
-        data={DATA}
+        data={listData}
         keyExtractor={(i) => i.id}
-        renderItem={renderItem}
+        renderItem={({ item, index }) => {
+          const prev = listData[index - 1];
+          const showDate = !prev || prev.date !== item.date;
+          return (
+            <View>
+              {showDate && <DateSeparator label={item.date} />}
+              <Bubble m={item} />
+            </View>
+          );
+        }}
         inverted
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
@@ -320,8 +445,16 @@ export default function ChatDetail() {
           paddingBottom: composerH + insets.bottom + 8,
         }}
         onContentSizeChange={() => scrollToBottom(false)}
+        ListEmptyComponent={
+          <View className="items-center mt-4">
+            <Text style={{ color: C.sub, fontSize: 13 }}>
+              Aún no hay mensajes. Escribe el primero 👋
+            </Text>
+          </View>
+        }
       />
 
+      {/* Composer */}
       <View
         onLayout={(e) => setComposerH(e.nativeEvent.layout.height)}
         className="px-3 py-2 flex-row items-end"
@@ -364,14 +497,16 @@ export default function ChatDetail() {
 
         <Pressable
           onPress={onSend}
-          disabled={!value.trim()}
+          disabled={!value.trim() || !userId}
           className="h-11 w-11 items-center justify-center ml-2 rounded-full"
-          style={{ backgroundColor: value.trim() ? C.sendBtn : C.pill }}
+          style={{
+            backgroundColor: value.trim() && userId ? C.sendBtn : C.pill,
+          }}
         >
           <Feather
             name="send"
             size={18}
-            color={value.trim() ? "#ffffff" : C.icon}
+            color={value.trim() && userId ? "#ffffff" : C.icon}
           />
         </Pressable>
       </View>
