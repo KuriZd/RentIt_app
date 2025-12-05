@@ -1,5 +1,6 @@
 // app/cart/index.tsx
 import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -350,10 +351,11 @@ function SavedCard({
 
 export default function ShoppingCartScreen() {
   const C = useColors();
+  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [checkingOut, setCheckingOut] = useState(false);
   const [cartId, setCartId] = useState<string | null>(null);
+  const [perfilId, setPerfilId] = useState<string | null>(null);
   const [cart, setCart] = useState<Item[]>([]);
   const [saved, setSaved] = useState<Item[]>([]);
   const [subtotal, setSubtotal] = useState(0);
@@ -361,13 +363,15 @@ export default function ShoppingCartScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const perfilId = await getCurrentPerfilId();
-        if (!perfilId) {
+        const currentPerfilId = await getCurrentPerfilId();
+        if (!currentPerfilId) {
           setLoading(false);
           return;
         }
 
-        const cartRow = await getOrCreateActiveCart(perfilId);
+        setPerfilId(currentPerfilId);
+
+        const cartRow = await getOrCreateActiveCart(currentPerfilId);
         setCartId(cartRow.id);
 
         const itemsRes = await supabase
@@ -459,93 +463,32 @@ export default function ShoppingCartScreen() {
   const removeFromSaved = (id: string) =>
     setSaved((prev) => prev.filter((it) => it.id !== id));
 
-  const handleCheckout = async () => {
+    const handleCheckout = () => {
     if (!cart.length) {
       Alert.alert("Carrito vacío", "Agrega artículos antes de pagar.");
       return;
     }
 
-    try {
-      setCheckingOut(true);
-
-      const { data: userData, error: userError } =
-        await supabase.auth.getUser();
-      if (userError || !userData.user) {
-        throw new Error("Debes iniciar sesión para continuar.");
-      }
-      const userId = userData.user.id;
-
-      const now = new Date();
-
-      const reservas = cart.map((it) => {
-        const qty = it.qty ?? 1;
-        const periodQty = it.periodQty ?? 1;
-        const totalPeriods = qty * periodQty;
-        const unidad = it.unit ?? "dia";
-
-        const fechaInicio = now.toISOString();
-        const fechaFin = addPeriods(now, unidad, totalPeriods).toISOString();
-
-        const precio_unitario = it.price;
-        const cantidad = totalPeriods;
-        const subtotalRow = precio_unitario * cantidad;
-
-        const tarifa_entrega = it.deliveryFee ?? 0;
-        const deposito_cobrado = 0;
-        const comision_plataforma = 0;
-
-        const totalRow =
-          subtotalRow + tarifa_entrega + deposito_cobrado + comision_plataforma;
-
-        const entrega_solicitada = !!it.deliveryAvailable && !it.pickupOnly;
-
-        return {
-          id_usuario: userId,
-          id_articulo: it.articleId,
-          fecha_inicio: fechaInicio,
-          fecha_fin: fechaFin,
-          precio_unitario,
-          unidad_precio: unidad,
-          cantidad,
-          entrega_solicitada,
-          tarifa_entrega,
-          deposito_cobrado,
-          subtotal: subtotalRow,
-          comision_plataforma,
-          total: totalRow,
-          estado_reservacion: "pendiente",
-          notas: null,
-        };
-      });
-
-      const { error: insertError } = await supabase
-        .from("reservaciones")
-        .insert(reservas);
-
-      if (insertError) {
-        throw insertError;
-      }
-
-      if (cartId) {
-        await supabase
-          .from("carts")
-          .update({ status: "ordered" })
-          .eq("id", cartId);
-        await supabase.from("cart_items").delete().eq("id_carrito", cartId);
-      }
-
-      setCart([]);
-      setSubtotal(0);
+    if (!cartId || !perfilId) {
       Alert.alert(
-        "Reservación creada",
-        "Tus artículos han sido agregados a tus reservaciones."
+        "Error",
+        "No se pudo obtener la información del carrito. Intenta de nuevo."
       );
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo procesar el pago.");
-    } finally {
-      setCheckingOut(false);
+      return;
     }
+
+    const firstArticle = cart[0];
+
+    router.push({
+      pathname: "/payment-method",
+      params: {
+        cartId,
+        userId: perfilId,
+        articleId: String(firstArticle.articleId),
+      },
+    });
   };
+
 
   if (loading) {
     return (
@@ -597,13 +540,11 @@ export default function ShoppingCartScreen() {
             className="mt-3 h-11 rounded-xl items-center justify-center"
             style={{ backgroundColor: "#111827" }}
             onPress={handleCheckout}
-            disabled={checkingOut || !cart.length}
+            disabled={!cart.length}
           >
-            {checkingOut ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text className="text-white font-semibold">Proceder al pago</Text>
-            )}
+            <Text className="text-white font-semibold">
+              Proceder al pago
+            </Text>
           </Pressable>
         </View>
 
