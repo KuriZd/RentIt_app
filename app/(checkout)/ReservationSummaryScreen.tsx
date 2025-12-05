@@ -249,29 +249,33 @@ export default function ReservationSummaryScreen() {
     return;
   }
 
-  if (!items.length) {
-    Alert.alert(
-      "Carrito vacío",
-      "No hay artículos en el carrito para reservar."
-    );
-    return;
-  }
-
   try {
     setConfirming(true);
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError || !userData.user) {
+    if (userError || !userData?.user) {
       throw new Error("Debes iniciar sesión para confirmar la reservación.");
     }
-    const userId = userData.user.id;
+    const userAuthId = userData.user.id;
+
+    const { data: cartItems, error: itemsError } = await supabase
+      .from("cart_items")
+      .select(CART_ITEMS_SELECT)
+      .eq("id_carrito", cartId);
+
+    if (itemsError) throw itemsError;
+
+    if (!cartItems || cartItems.length === 0) {
+      Alert.alert(
+        "Carrito vacío",
+        "No hay artículos en el carrito para reservar."
+      );
+      return;
+    }
 
     const now = new Date();
-    let firstArticleId: number | null = null;
 
-    const reservas = items.map((it) => {
-      if (firstArticleId == null) firstArticleId = it.id_articulo;
-
+    const reservas = cartItems.map((it: any) => {
       const unidad = (it.unidad ?? "dia") as UnidadPrecio;
       const qty = it.qty ?? 1;
       const periodQty = it.periodo_cantidad ?? 1;
@@ -291,13 +295,16 @@ export default function ReservationSummaryScreen() {
       const comision_plataforma = 0;
 
       const totalRow =
-        subtotalRow + tarifa_entrega + deposito_cobrado + comision_plataforma;
+        subtotalRow +
+        tarifa_entrega +
+        deposito_cobrado +
+        comision_plataforma;
 
       const entrega_solicitada =
         !!it.entrega_disponible && !it.solo_retiro;
 
       return {
-        id_usuario: userId,
+        id_usuario: userAuthId,
         id_articulo: it.id_articulo,
         fecha_inicio,
         fecha_fin,
@@ -333,15 +340,7 @@ export default function ReservationSummaryScreen() {
 
     Alert.alert("Reservación creada", "Tus artículos han sido reservados.");
 
-    const ticketParams: any = {};
-    if (firstArticleId != null) {
-      ticketParams.articleId = String(firstArticleId);
-    }
-
-    router.replace({
-      pathname: "/tickets",
-      params: ticketParams,
-    });
+    router.replace("/tickets");
   } catch (e: any) {
     Alert.alert(
       "Error",
@@ -351,7 +350,6 @@ export default function ReservationSummaryScreen() {
     setConfirming(false);
   }
 };
-
 
 
 

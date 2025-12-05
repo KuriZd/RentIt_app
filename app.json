@@ -12,7 +12,7 @@
       "supportsTablet": true
     },
     "android": {
-       "softwareKeyboardLayoutMode": "pan" ,
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -41,7 +41,8 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-barcode-scanner"
     ],
     "experiments": {
       "typedRoutes": true,
