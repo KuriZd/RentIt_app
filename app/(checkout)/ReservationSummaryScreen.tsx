@@ -3,14 +3,14 @@ import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Pressable,
-    ScrollView,
-    Text,
-    View,
-    useColorScheme,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  useColorScheme,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../utils/supabase";
@@ -240,7 +240,7 @@ export default function ReservationSummaryScreen() {
     />
   );
 
-  const handleConfirm = async () => {
+ const handleConfirm = async () => {
   if (!cartId) {
     Alert.alert(
       "Error",
@@ -260,7 +260,6 @@ export default function ReservationSummaryScreen() {
   try {
     setConfirming(true);
 
-    // Igual que en cart: tomamos el uid del usuario autenticado
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData.user) {
       throw new Error("Debes iniciar sesión para confirmar la reservación.");
@@ -268,9 +267,11 @@ export default function ReservationSummaryScreen() {
     const userId = userData.user.id;
 
     const now = new Date();
+    let firstArticleId: number | null = null;
 
-    // Mismas reglas que en cart/index.tsx, pero usando CartItemRow
     const reservas = items.map((it) => {
+      if (firstArticleId == null) firstArticleId = it.id_articulo;
+
       const unidad = (it.unidad ?? "dia") as UnidadPrecio;
       const qty = it.qty ?? 1;
       const periodQty = it.periodo_cantidad ?? 1;
@@ -320,7 +321,6 @@ export default function ReservationSummaryScreen() {
 
     if (insertError) throw insertError;
 
-    // Igual que en cart: marcar carrito como ordered y limpiar items
     await supabase
       .from("carts")
       .update({ status: "ordered" })
@@ -332,7 +332,16 @@ export default function ReservationSummaryScreen() {
       .eq("id_carrito", cartId);
 
     Alert.alert("Reservación creada", "Tus artículos han sido reservados.");
-    router.replace("/main");
+
+    const ticketParams: any = {};
+    if (firstArticleId != null) {
+      ticketParams.articleId = String(firstArticleId);
+    }
+
+    router.replace({
+      pathname: "/tickets",
+      params: ticketParams,
+    });
   } catch (e: any) {
     Alert.alert(
       "Error",
@@ -342,6 +351,8 @@ export default function ReservationSummaryScreen() {
     setConfirming(false);
   }
 };
+
+
 
 
   return (

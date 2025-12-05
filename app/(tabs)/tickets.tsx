@@ -1,23 +1,29 @@
-// app/tickets/index.tsx
+// app/(tabs)/tickets.tsx
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo } from "react";
 import {
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
-    useColorScheme,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useColorScheme,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+type TicketParams = {
+  articleId?: string;
+};
 
 export default function TicketScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
+
+  const { articleId } = useLocalSearchParams<TicketParams>();
 
   const COLORS = useMemo(
     () => ({
@@ -33,7 +39,6 @@ export default function TicketScreen() {
   const screenBg = isDark ? "#020617" : "#f3f4f6";
   const ticketBg = isDark ? "#18181b" : "#f9fafb";
 
-  // 🔹 Por ahora datos estáticos; luego los cambiamos por datos reales
   const ticket = {
     date: "10 Oct",
     name: "Oscar Zamudio",
@@ -43,9 +48,9 @@ export default function TicketScreen() {
     lessorName: "Silvia atreides",
     lessorPhone: "+52 4435593514",
     pickupAddress: "6391 Eigth St. Celina",
+    articleId: articleId ?? null,
   };
 
-  // 🔹 Payload del QR basado en los datos de arriba
   const qrValue = useMemo(
     () =>
       JSON.stringify({
@@ -53,7 +58,7 @@ export default function TicketScreen() {
         version: 1,
         ...ticket,
       }),
-    [ticket]
+    [articleId]
   );
 
   return (
@@ -67,7 +72,6 @@ export default function TicketScreen() {
         },
       ]}
     >
-      {/* Header */}
       <View style={styles.headerRow}>
         <Pressable
           onPress={() => router.back()}
@@ -96,7 +100,6 @@ export default function TicketScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Tarjeta del ticket */}
         <View
           style={[
             styles.ticketCard,
@@ -106,7 +109,6 @@ export default function TicketScreen() {
             },
           ]}
         >
-          {/* “Mordidas” laterales */}
           <View
             style={[
               styles.cutLeft,
@@ -123,7 +125,6 @@ export default function TicketScreen() {
               },
             ]}
           />
-          {/* Notch superior */}
           <View
             style={[
               styles.notchTop,
@@ -133,7 +134,6 @@ export default function TicketScreen() {
             ]}
           />
 
-          {/* Logo & fecha */}
           <View style={styles.ticketTop}>
             <View
               style={[
@@ -152,7 +152,6 @@ export default function TicketScreen() {
             </Text>
           </View>
 
-          {/* Datos */}
           <View style={styles.infoGrid}>
             <View style={styles.infoColumn}>
               <Text style={[styles.label, { color: COLORS.iconMuted }]}>
@@ -177,7 +176,7 @@ export default function TicketScreen() {
               </Text>
 
               <Text style={[styles.label, { color: COLORS.iconMuted }]}>
-                Puck Up address
+                Pick up address
               </Text>
               <Text style={[styles.valueSmall, { color: COLORS.icon }]}>
                 {ticket.pickupAddress}
@@ -205,10 +204,20 @@ export default function TicketScreen() {
               <Text style={[styles.value, { color: COLORS.icon }]}>
                 {ticket.lessorPhone}
               </Text>
+
+              {articleId && (
+                <>
+                  <Text style={[styles.label, { color: COLORS.iconMuted }]}>
+                    Article ID
+                  </Text>
+                  <Text style={[styles.value, { color: COLORS.icon }]}>
+                    {articleId}
+                  </Text>
+                </>
+              )}
             </View>
           </View>
 
-          {/* Línea punteada */}
           <View
             style={[
               styles.dashedLine,
@@ -218,7 +227,6 @@ export default function TicketScreen() {
             ]}
           />
 
-          {/* QR */}
           <View style={styles.qrWrapper}>
             <View
               style={[
