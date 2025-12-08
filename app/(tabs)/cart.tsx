@@ -1,5 +1,6 @@
 // app/cart/index.tsx
 import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import React, {
   useCallback,
   useEffect,
@@ -9,7 +10,6 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Image,
   Platform,
@@ -23,6 +23,7 @@ import { supabase } from "../../utils/supabase";
 
 type DeliveryMethod = "Envio" | "Pickup" | "Entrega";
 type UnidadPrecio = "hora" | "dia" | "semana";
+type CartItemState = "active" | "saved";
 
 type Item = {
   id: string;
@@ -38,6 +39,7 @@ type Item = {
   deliveryFee?: number;
   pickupOnly?: boolean;
   deliveryAvailable?: boolean;
+  state?: CartItemState;
 };
 
 type CartRow = {
@@ -46,42 +48,18 @@ type CartRow = {
   status: "active" | "ordered" | "abandoned" | "canceled";
 };
 
-type CartTotalsRow = {
-  id_carrito: string;
-  id_perfil: string;
-  subtotal: number;
-  items_count: number;
-};
-
 type ToastState =
   | {
-      type: "success" | "error";
-      title: string;
-      message?: string;
-    }
+    type: "success" | "error";
+    title: string;
+    message?: string;
+  }
   | null;
 
 type ToastProps = {
   toast: ToastState;
   onDismiss: () => void;
 };
-
-function addPeriods(base: Date, unit: UnidadPrecio, periods: number): Date {
-  const d = new Date(base);
-  switch (unit) {
-    case "hora":
-      d.setHours(d.getHours() + periods);
-      break;
-    case "semana":
-      d.setDate(d.getDate() + periods * 7);
-      break;
-    case "dia":
-    default:
-      d.setDate(d.getDate() + periods);
-      break;
-  }
-  return d;
-}
 
 function useColors() {
   const scheme = useColorScheme();
@@ -157,8 +135,11 @@ function rowToUI(row: any): Item {
     deliveryFee: row.tarifa_entrega ? Number(row.tarifa_entrega) : 0,
     pickupOnly: !!row.solo_retiro,
     deliveryAvailable: !!row.entrega_disponible,
+    state: row.estado as CartItemState | undefined,
   };
 }
+
+// ---------- TOASTS ----------
 
 function AnimatedToast({ toast, onDismiss }: ToastProps) {
   const translateY = useRef(new Animated.Value(-100)).current;
@@ -217,7 +198,6 @@ function AnimatedToast({ toast, onDismiss }: ToastProps) {
       pointerEvents="box-none"
       style={{
         position: "absolute",
-        // 🔽 Lo movemos más abajo, cerca del título "Shopping Cart"
         top: Platform.OS === "ios" ? 24 : 16,
         left: 16,
         right: 16,
@@ -385,6 +365,8 @@ function useToast() {
   return { toast, showToast, hideToast };
 }
 
+// ---------- UI helpers ----------
+
 function QtyControl({
   value,
   onChange,
@@ -481,11 +463,14 @@ function CartCard({
         <Text className="text-lg font-black" style={{ color: C.text }}>
           ${item.price}
         </Text>
-        <Text className="text-[13px] mt-1" style={{ color: C.success }}>
-          Disponible
+        <Text
+          className="text-[13px] mt-1"
+          style={{ color: item.available ? C.success : C.subtext }}
+        >
+          {item.available ? "Disponible" : "No disponible"}
         </Text>
         <Text className="text-[13px]" style={{ color: C.text }}>
-          Método de Recolección:
+          Método de recolección:
         </Text>
         <Text
           className="text-[13px] -mt-1 mb-2 font-semibold"
@@ -521,7 +506,7 @@ function CartCard({
             leftIcon={<Feather name="bookmark" size={14} color={C.icon} />}
           />
           <PillButton
-            label="Productos Similares"
+            label="Productos similares"
             onPress={onSimilar}
             pill={C.pill}
             ring={C.ring}
@@ -558,11 +543,14 @@ function SavedCard({
         <Text className="text-lg font-black" style={{ color: C.text }}>
           ${item.price}
         </Text>
-        <Text className="text-[13px] mt-1" style={{ color: C.success }}>
-          Disponible
+        <Text
+          className="text-[13px] mt-1"
+          style={{ color: item.available ? C.success : C.subtext }}
+        >
+          {item.available ? "Disponible" : "No disponible"}
         </Text>
         <Text className="text-[13px]" style={{ color: C.text }}>
-          Método de Recolección:
+          Método de recolección:
         </Text>
         <Text
           className="text-[13px] -mt-1 mb-2 font-semibold"
@@ -594,27 +582,31 @@ function SavedCard({
   );
 }
 
+// ---------- Screen ----------
+
 export default function ShoppingCartScreen() {
   const C = useColors();
+  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [checkingOut, setCheckingOut] = useState(false);
   const [cartId, setCartId] = useState<string | null>(null);
+  const [perfilId, setPerfilId] = useState<string | null>(null);
   const [cart, setCart] = useState<Item[]>([]);
   const [saved, setSaved] = useState<Item[]>([]);
-  const [subtotal, setSubtotal] = useState(0);
   const { toast, showToast, hideToast } = useToast();
 
   useEffect(() => {
     (async () => {
       try {
-        const perfilId = await getCurrentPerfilId();
-        if (!perfilId) {
+        const currentPerfilId = await getCurrentPerfilId();
+        if (!currentPerfilId) {
           setLoading(false);
           return;
         }
 
-        const cartRow = await getOrCreateActiveCart(perfilId);
+        setPerfilId(currentPerfilId);
+
+        const cartRow = await getOrCreateActiveCart(currentPerfilId);
         setCartId(cartRow.id);
 
         const itemsRes = await supabase
@@ -634,242 +626,197 @@ export default function ShoppingCartScreen() {
             tarifa_entrega,
             solo_retiro,
             entrega_disponible,
-            disponible
+            disponible,
+            estado
           `
           )
           .eq("id_carrito", cartRow.id);
 
-        const totalsRes = await supabase
-          .from("cart_totals")
-          .select("*")
-          .eq("id_carrito", cartRow.id)
-          .maybeSingle();
-
         if (itemsRes.error) throw itemsRes.error;
-        if (totalsRes.error && totalsRes.error.code !== "PGRST116")
-          throw totalsRes.error;
 
         const rows = (itemsRes.data ?? []) as any[];
-        const items = rows.map(rowToUI);
-        setCart(items);
 
-        const total =
-          totalsRes.data && (totalsRes.data as CartTotalsRow).subtotal != null
-            ? Number((totalsRes.data as CartTotalsRow).subtotal)
-            : items.reduce((acc, it) => acc + it.price * (it.qty ?? 1), 0);
+        const activeRows = rows.filter(
+          (r) => r.estado === "active" || !r.estado
+        );
+        const savedRows = rows.filter((r) => r.estado === "saved");
 
-        setSubtotal(total);
+        const activeItems = activeRows.map(rowToUI);
+        const savedItems = savedRows.map(rowToUI);
+
+        setCart(activeItems);
+        setSaved(savedItems);
       } catch (e: any) {
-        Alert.alert("Error", e?.message ?? "No se pudo cargar el carrito");
+        showToast({
+          type: "error",
+          title: "Error",
+          message: e?.message ?? "No se pudo cargar el carrito.",
+        });
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [showToast]);
 
   const setQty = async (id: string, qty: number) => {
-    setCart((prev) => prev.map((it) => (it.id === id ? { ...it, qty } : it)));
-    setSubtotal((prev) => {
-      const item = cart.find((x) => x.id === id);
-      if (!item) return prev;
-      const old = (item.qty || 1) * item.price;
-      const neu = qty * item.price;
-      return prev - old + neu;
-    });
     const { error } = await supabase
       .from("cart_items")
       .update({ qty })
       .eq("id", id);
+
     if (error) {
-      showToast(
-        {
-          type: "error",
-          title: "Error al actualizar",
-          message: "No se pudo actualizar la cantidad.",
-        },
-        3000
-      );
+      showToast({
+        type: "error",
+        title: "Error al actualizar",
+        message: "No se pudo actualizar la cantidad.",
+      });
+      return;
     }
+
+    setCart((prev) =>
+      prev.map((it) => (it.id === id ? { ...it, qty } : it))
+    );
   };
 
   const removeFromCart = async (id: string) => {
     const item = cart.find((x) => x.id === id);
-    try {
-      const { error } = await supabase.from("cart_items").delete().eq("id", id);
-      if (error) throw error;
+    const { error } = await supabase.from("cart_items").delete().eq("id", id);
 
-      setCart((prev) => prev.filter((it) => it.id !== id));
-      if (item) {
-        setSubtotal((p) => p - item.price * (item.qty || 1));
-      }
-
-      showToast(
-        {
-          type: "success",
-          title: "Artículo eliminado",
-          message: item
-            ? `"${item.title}" se quitó del carrito.`
-            : "El artículo se quitó del carrito.",
-        },
-        2500
-      );
-    } catch (e: any) {
-      showToast(
-        {
-          type: "error",
-          title: "Error al eliminar",
-          message: e?.message ?? "No se pudo eliminar el artículo.",
-        },
-        3000
-      );
-    }
-  };
-
-  const saveForLater = (it: Item) => {
-    setCart((prev) => prev.filter((x) => x.id !== it.id));
-    setSaved((prev) => [it, ...prev]);
-    setSubtotal((p) => p - it.price * (it.qty || 1));
-
-    showToast(
-      {
-        type: "success",
-        title: "Guardado para más tarde",
-        message: `"${it.title}" se movió a guardados.`,
-      },
-      2500
-    );
-  };
-
-  const moveToCart = (it: Item) => {
-    setSaved((prev) => prev.filter((x) => x.id !== it.id));
-    setCart((prev) => [it, ...prev]);
-    setSubtotal((p) => p + it.price * (it.qty || 1));
-
-    showToast(
-      {
-        type: "success",
-        title: "Artículo en el carrito",
-        message: `"${it.title}" se movió al carrito.`,
-      },
-      2500
-    );
-  };
-
-  const removeFromSaved = (id: string) => {
-    const item = saved.find((x) => x.id === id);
-    setSaved((prev) => prev.filter((it) => it.id !== id));
-
-    showToast(
-      {
-        type: "success",
-        title: "Eliminado de guardados",
-        message: item
-          ? `"${item.title}" se eliminó de guardados.`
-          : "El artículo se eliminó de guardados.",
-      },
-      2500
-    );
-  };
-
-  const handleCheckout = async () => {
-    if (!cart.length) {
-      Alert.alert("Carrito vacío", "Agrega artículos antes de pagar.");
+    if (error) {
+      showToast({
+        type: "error",
+        title: "Error al eliminar",
+        message: "No se pudo eliminar el artículo.",
+      });
       return;
     }
 
-    try {
-      setCheckingOut(true);
+    setCart((prev) => prev.filter((it) => it.id !== id));
 
-      const { data: userData, error: userError } =
-        await supabase.auth.getUser();
-      if (userError || !userData.user) {
-        throw new Error("Debes iniciar sesión para continuar.");
-      }
-      const userId = userData.user.id;
-
-      const now = new Date();
-
-      const reservas = cart.map((it) => {
-        const qty = it.qty ?? 1;
-        const periodQty = it.periodQty ?? 1;
-        const totalPeriods = qty * periodQty;
-        const unidad = it.unit ?? "dia";
-
-        const fechaInicio = now.toISOString();
-        const fechaFin = addPeriods(now, unidad, totalPeriods).toISOString();
-
-        const precio_unitario = it.price;
-        const cantidad = totalPeriods;
-        const subtotalRow = precio_unitario * cantidad;
-
-        const tarifa_entrega = it.deliveryFee ?? 0;
-        const deposito_cobrado = 0;
-        const comision_plataforma = 0;
-
-        const totalRow =
-          subtotalRow + tarifa_entrega + deposito_cobrado + comision_plataforma;
-
-        const entrega_solicitada = !!it.deliveryAvailable && !it.pickupOnly;
-
-        return {
-          id_usuario: userId,
-          id_articulo: it.articleId,
-          fecha_inicio: fechaInicio,
-          fecha_fin: fechaFin,
-          precio_unitario,
-          unidad_precio: unidad,
-          cantidad,
-          entrega_solicitada,
-          tarifa_entrega,
-          deposito_cobrado,
-          subtotal: subtotalRow,
-          comision_plataforma,
-          total: totalRow,
-          estado_reservacion: "pendiente",
-          notas: null,
-        };
-      });
-
-      const { error: insertError } = await supabase
-        .from("reservaciones")
-        .insert(reservas);
-
-      if (insertError) {
-        throw insertError;
-      }
-
-      if (cartId) {
-        await supabase
-          .from("carts")
-          .update({ status: "ordered" })
-          .eq("id", cartId);
-        await supabase.from("cart_items").delete().eq("id_carrito", cartId);
-      }
-
-      setCart([]);
-      setSubtotal(0);
-
-      showToast(
-        {
-          type: "success",
-          title: "Reservación creada",
-          message: "Tus artículos se movieron a reservaciones.",
-        },
-        3000
-      );
-    } catch (e: any) {
-      showToast(
-        {
-          type: "error",
-          title: "Error al pagar",
-          message: e?.message ?? "No se pudo procesar el pago.",
-        },
-        3000
-      );
-    } finally {
-      setCheckingOut(false);
-    }
+    showToast({
+      type: "success",
+      title: "Artículo eliminado",
+      message: item
+        ? `"${item.title}" se eliminó del carrito.`
+        : "El artículo se eliminó del carrito.",
+    });
   };
+
+  const saveForLater = async (it: Item) => {
+    const { error } = await supabase
+      .from("cart_items")
+      .update({ estado: "saved" })
+      .eq("id", it.id);
+
+    if (error) {
+      showToast({
+        type: "error",
+        title: "Error al guardar",
+        message: "No se pudo guardar el artículo para más tarde.",
+      });
+      return;
+    }
+
+    setCart((prev) => prev.filter((x) => x.id !== it.id));
+    setSaved((prev) => [it, ...prev]);
+
+    showToast({
+      type: "success",
+      title: "Guardado para más tarde",
+      message: `"${it.title}" se movió a guardados.`,
+    });
+  };
+
+  const moveToCart = async (it: Item) => {
+    const { error } = await supabase
+      .from("cart_items")
+      .update({ estado: "active" })
+      .eq("id", it.id);
+
+    if (error) {
+      showToast({
+        type: "error",
+        title: "Error al mover",
+        message: "No se pudo mover el artículo al carrito.",
+      });
+      return;
+    }
+
+    setSaved((prev) => prev.filter((x) => x.id !== it.id));
+    setCart((prev) => [it, ...prev]);
+
+    showToast({
+      type: "success",
+      title: "Artículo en el carrito",
+      message: `"${it.title}" se movió al carrito.`,
+    });
+  };
+
+  const removeFromSaved = async (id: string) => {
+    const item = saved.find((x) => x.id === id);
+    const { error } = await supabase.from("cart_items").delete().eq("id", id);
+
+    if (error) {
+      showToast({
+        type: "error",
+        title: "Error al eliminar",
+        message: "No se pudo eliminar el artículo de guardados.",
+      });
+      return;
+    }
+
+    setSaved((prev) => prev.filter((it) => it.id !== id));
+
+    showToast({
+      type: "success",
+      title: "Eliminado de guardados",
+      message: item
+        ? `"${item.title}" se eliminó de guardados.`
+        : "El artículo se eliminó de guardados.",
+    });
+  };
+
+  const handleCheckout = () => {
+    if (!cart.length) {
+      showToast({
+        type: "error",
+        title: "Carrito vacío",
+        message: "Agrega artículos antes de pagar.",
+      });
+      return;
+    }
+
+    if (!cartId || !perfilId) {
+      showToast({
+        type: "error",
+        title: "Error",
+        message:
+          "No se pudo obtener la información del carrito. Intenta de nuevo.",
+      });
+      return;
+    }
+
+    const firstArticle = cart[0];
+
+    router.push({
+      pathname: "/(checkout)/payment-method",
+      params: {
+        cartId,
+        userId: perfilId,
+        articleId: String(firstArticle.articleId),
+        articleIds: cart.map((it) => String(it.articleId)).join(","),
+      },
+    });
+  };
+
+  const subtotal = useMemo(
+    () => cart.reduce((acc, it) => acc + it.price * (it.qty ?? 1), 0),
+    [cart]
+  );
+
+  const subtotalFixed = Number.isFinite(subtotal)
+    ? subtotal.toFixed(2)
+    : "0.00";
 
   if (loading) {
     return (
@@ -880,10 +827,6 @@ export default function ShoppingCartScreen() {
     );
   }
 
-  const subtotalFixed = Number.isFinite(subtotal)
-    ? subtotal.toFixed(2)
-    : "0.00";
-
   return (
     <View className="flex-1 mt-10" style={{ backgroundColor: C.bg }}>
       <AnimatedToast toast={toast} onDismiss={hideToast} />
@@ -893,7 +836,7 @@ export default function ShoppingCartScreen() {
           className="text-3xl font-extrabold mb-4"
           style={{ color: C.text }}
         >
-          Shopping Cart
+          Carrito de compras
         </Text>
 
         {cart.map((it) => (
@@ -902,7 +845,7 @@ export default function ShoppingCartScreen() {
             item={it}
             onQty={(q) => setQty(it.id, q)}
             onSaveForLater={() => saveForLater(it)}
-            onSimilar={() => {}}
+            onSimilar={() => { }}
             onDelete={() => removeFromCart(it.id)}
           />
         ))}
@@ -923,15 +866,9 @@ export default function ShoppingCartScreen() {
             className="mt-3 h-11 rounded-xl items-center justify-center"
             style={{ backgroundColor: "#111827" }}
             onPress={handleCheckout}
-            disabled={checkingOut || !cart.length}
+            disabled={!cart.length}
           >
-            {checkingOut ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text className="text-white font-semibold">
-                Proceder al pago
-              </Text>
-            )}
+            <Text className="text-white font-semibold">Proceder al pago</Text>
           </Pressable>
         </View>
 
@@ -939,7 +876,7 @@ export default function ShoppingCartScreen() {
           className="text-2xl font-extrabold mb-3"
           style={{ color: C.text }}
         >
-          Save for Later
+          Guardados para más tarde
         </Text>
 
         {saved.map((it) => (
