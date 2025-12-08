@@ -766,7 +766,6 @@ export default function ShoppingCartScreen() {
     }
 
     setSaved((prev) => prev.filter((it) => it.id !== id));
-  };
 
     showToast({
       type: "success",
