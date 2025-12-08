@@ -1,11 +1,18 @@
 // app/cart/index.tsx
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Animated,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -39,6 +46,19 @@ type CartRow = {
   id: string;
   id_perfil: string;
   status: "active" | "ordered" | "abandoned" | "canceled";
+};
+
+type ToastState =
+  | {
+    type: "success" | "error";
+    title: string;
+    message?: string;
+  }
+  | null;
+
+type ToastProps = {
+  toast: ToastState;
+  onDismiss: () => void;
 };
 
 function useColors() {
@@ -118,6 +138,234 @@ function rowToUI(row: any): Item {
     state: row.estado as CartItemState | undefined,
   };
 }
+
+// ---------- TOASTS ----------
+
+function AnimatedToast({ toast, onDismiss }: ToastProps) {
+  const translateY = useRef(new Animated.Value(-100)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    if (toast) {
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 65,
+          friction: 8,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scale, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 80,
+          friction: 7,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(translateY, {
+          toValue: -100,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 0.9,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [toast, translateY, opacity, scale]);
+
+  if (!toast) return null;
+
+  const bgColor = toast.type === "success" ? "#10b981" : "#ef4444";
+  const icon = toast.type === "success" ? "check-circle" : "alert-circle";
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: "absolute",
+        top: Platform.OS === "ios" ? 24 : 16,
+        left: 16,
+        right: 16,
+        zIndex: 999,
+      }}
+    >
+      <Animated.View
+        style={{
+          transform: [{ translateY }, { scale }],
+          opacity,
+        }}
+      >
+        <Pressable
+          onPress={onDismiss}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            borderRadius: 16,
+            backgroundColor: bgColor,
+            shadowColor: "#000",
+            shadowOpacity: 0.3,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 12,
+          }}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Feather name={icon as any} size={20} color="#fff" />
+          </View>
+
+          <View style={{ flex: 1, marginHorizontal: 12 }}>
+            <Text
+              style={{
+                color: "#fff",
+                fontSize: 15,
+                fontWeight: "700",
+                letterSpacing: 0.2,
+              }}
+            >
+              {toast.title}
+            </Text>
+            {toast.message && (
+              <Text
+                style={{
+                  color: "#fff",
+                  fontSize: 13,
+                  marginTop: 2,
+                  opacity: 0.95,
+                  lineHeight: 18,
+                }}
+              >
+                {toast.message}
+              </Text>
+            )}
+          </View>
+
+          <Pressable
+            onPress={onDismiss}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Feather name="x" size={16} color="#fff" />
+          </Pressable>
+
+          <View
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 3,
+              borderBottomLeftRadius: 16,
+              borderBottomRightRadius: 16,
+              backgroundColor: "rgba(255, 255, 255, 0.3)",
+              overflow: "hidden",
+            }}
+          >
+            <ProgressBar duration={3000} />
+          </View>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
+function ProgressBar({ duration }: { duration: number }) {
+  const width = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(width, {
+      toValue: 100,
+      duration,
+      useNativeDriver: false,
+    }).start();
+  }, [duration, width]);
+
+  const widthInterpolated = width.interpolate({
+    inputRange: [0, 100],
+    outputRange: ["0%", "100%"],
+  });
+
+  return (
+    <Animated.View
+      style={{
+        height: "100%",
+        backgroundColor: "rgba(255, 255, 255, 0.5)",
+        width: widthInterpolated,
+      }}
+    />
+  );
+}
+
+function useToast() {
+  const [toast, setToast] = useState<ToastState>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback(
+    (config: NonNullable<ToastState>, duration = 3000) => {
+      setToast(config);
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      timeoutRef.current = setTimeout(() => {
+        setToast(null);
+      }, duration);
+    },
+    []
+  );
+
+  const hideToast = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    setToast(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return { toast, showToast, hideToast };
+}
+
+// ---------- UI helpers ----------
 
 function QtyControl({
   value,
@@ -334,6 +582,8 @@ function SavedCard({
   );
 }
 
+// ---------- Screen ----------
+
 export default function ShoppingCartScreen() {
   const C = useColors();
   const router = useRouter();
@@ -343,6 +593,7 @@ export default function ShoppingCartScreen() {
   const [perfilId, setPerfilId] = useState<string | null>(null);
   const [cart, setCart] = useState<Item[]>([]);
   const [saved, setSaved] = useState<Item[]>([]);
+  const { toast, showToast, hideToast } = useToast();
 
   useEffect(() => {
     (async () => {
@@ -386,7 +637,7 @@ export default function ShoppingCartScreen() {
         const rows = (itemsRes.data ?? []) as any[];
 
         const activeRows = rows.filter(
-          (r) => r.estado === "active" || !r.estado // por si hay datos antiguos sin estado
+          (r) => r.estado === "active" || !r.estado
         );
         const savedRows = rows.filter((r) => r.estado === "saved");
 
@@ -396,12 +647,16 @@ export default function ShoppingCartScreen() {
         setCart(activeItems);
         setSaved(savedItems);
       } catch (e: any) {
-        Alert.alert("Error", e?.message ?? "No se pudo cargar el carrito");
+        showToast({
+          type: "error",
+          title: "Error",
+          message: e?.message ?? "No se pudo cargar el carrito.",
+        });
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [showToast]);
 
   const setQty = async (id: string, qty: number) => {
     const { error } = await supabase
@@ -410,7 +665,11 @@ export default function ShoppingCartScreen() {
       .eq("id", id);
 
     if (error) {
-      Alert.alert("Error", "No se pudo actualizar la cantidad");
+      showToast({
+        type: "error",
+        title: "Error al actualizar",
+        message: "No se pudo actualizar la cantidad.",
+      });
       return;
     }
 
@@ -420,12 +679,27 @@ export default function ShoppingCartScreen() {
   };
 
   const removeFromCart = async (id: string) => {
+    const item = cart.find((x) => x.id === id);
     const { error } = await supabase.from("cart_items").delete().eq("id", id);
+
     if (error) {
-      Alert.alert("Error", "No se pudo eliminar el artículo");
+      showToast({
+        type: "error",
+        title: "Error al eliminar",
+        message: "No se pudo eliminar el artículo.",
+      });
       return;
     }
+
     setCart((prev) => prev.filter((it) => it.id !== id));
+
+    showToast({
+      type: "success",
+      title: "Artículo eliminado",
+      message: item
+        ? `"${item.title}" se eliminó del carrito.`
+        : "El artículo se eliminó del carrito.",
+    });
   };
 
   const saveForLater = async (it: Item) => {
@@ -435,12 +709,22 @@ export default function ShoppingCartScreen() {
       .eq("id", it.id);
 
     if (error) {
-      Alert.alert("Error", "No se pudo guardar el artículo para más tarde");
+      showToast({
+        type: "error",
+        title: "Error al guardar",
+        message: "No se pudo guardar el artículo para más tarde.",
+      });
       return;
     }
 
     setCart((prev) => prev.filter((x) => x.id !== it.id));
     setSaved((prev) => [it, ...prev]);
+
+    showToast({
+      type: "success",
+      title: "Guardado para más tarde",
+      message: `"${it.title}" se movió a guardados.`,
+    });
   };
 
   const moveToCart = async (it: Item) => {
@@ -450,36 +734,66 @@ export default function ShoppingCartScreen() {
       .eq("id", it.id);
 
     if (error) {
-      Alert.alert("Error", "No se pudo mover el artículo al carrito");
+      showToast({
+        type: "error",
+        title: "Error al mover",
+        message: "No se pudo mover el artículo al carrito.",
+      });
       return;
     }
 
     setSaved((prev) => prev.filter((x) => x.id !== it.id));
     setCart((prev) => [it, ...prev]);
+
+    showToast({
+      type: "success",
+      title: "Artículo en el carrito",
+      message: `"${it.title}" se movió al carrito.`,
+    });
   };
 
   const removeFromSaved = async (id: string) => {
+    const item = saved.find((x) => x.id === id);
     const { error } = await supabase.from("cart_items").delete().eq("id", id);
 
     if (error) {
-      Alert.alert("Error", "No se pudo eliminar el artículo");
+      showToast({
+        type: "error",
+        title: "Error al eliminar",
+        message: "No se pudo eliminar el artículo de guardados.",
+      });
       return;
     }
 
     setSaved((prev) => prev.filter((it) => it.id !== id));
   };
 
+    showToast({
+      type: "success",
+      title: "Eliminado de guardados",
+      message: item
+        ? `"${item.title}" se eliminó de guardados.`
+        : "El artículo se eliminó de guardados.",
+    });
+  };
+
   const handleCheckout = () => {
     if (!cart.length) {
-      Alert.alert("Carrito vacío", "Agrega artículos antes de pagar.");
+      showToast({
+        type: "error",
+        title: "Carrito vacío",
+        message: "Agrega artículos antes de pagar.",
+      });
       return;
     }
 
     if (!cartId || !perfilId) {
-      Alert.alert(
-        "Error",
-        "No se pudo obtener la información del carrito. Intenta de nuevo."
-      );
+      showToast({
+        type: "error",
+        title: "Error",
+        message:
+          "No se pudo obtener la información del carrito. Intenta de nuevo.",
+      });
       return;
     }
 
@@ -490,8 +804,8 @@ export default function ShoppingCartScreen() {
       params: {
         cartId,
         userId: perfilId,
-        articleId: String(firstArticle.articleId), // compat
-        articleIds: cart.map((it) => String(it.articleId)).join(","), // por si lo usas luego
+        articleId: String(firstArticle.articleId),
+        articleIds: cart.map((it) => String(it.articleId)).join(","),
       },
     });
   };
@@ -516,6 +830,8 @@ export default function ShoppingCartScreen() {
 
   return (
     <View className="flex-1 mt-10" style={{ backgroundColor: C.bg }}>
+      <AnimatedToast toast={toast} onDismiss={hideToast} />
+
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
         <Text
           className="text-3xl font-extrabold mb-4"
