@@ -66,24 +66,44 @@ export default function SignupScreen() {
   ] as const;
 
   const handleOAuth = async (provider: Provider) => {
-    const { data, error } = await supabase.auth.signInWithOAuth({ provider });
-    if (error) {
-      Alert.alert(`${provider} Sign-In error`, error.message);
-      return;
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        // si más adelante quieres deep linking, aquí va options.redirectTo
+      });
+
+      if (error) {
+        console.log("OAuth error:", error);
+        Alert.alert("Error al iniciar con " + provider, error.message);
+        return;
+      }
+
+      if (data?.url) {
+        await Linking.openURL(data.url);
+      }
+    } catch (err: any) {
+      console.error(err);
+      Alert.alert("Error inesperado", "No se pudo iniciar sesión con OAuth.");
     }
-    if (data?.url) await Linking.openURL(data.url);
   };
 
   const onSubmit = async () => {
-    if (!canSubmit || loading) return;
+    if (loading) return;
 
+    // marcamos como enviado para que se vean los errores
     setSubmitted(true);
+
+    // si no pasa validaciones, no intentamos registrar
+    if (!canSubmit) return;
+
     setLoading(true);
 
     try {
       const { error } = await supabase.auth.signUp({ email, password: pw });
 
       if (error) {
+        console.log("signUp error:", error);
+
         let msg = "Ocurrió un error al registrarte. Inténtalo de nuevo.";
 
         if (error.message.includes("already registered"))
@@ -95,6 +115,7 @@ export default function SignupScreen() {
         return;
       }
 
+      // pequeño delay para UX
       await new Promise((r) => setTimeout(r, 500));
 
       Alert.alert(
@@ -216,7 +237,7 @@ export default function SignupScreen() {
                 </View>
 
                 {/* Requisitos de contraseña (siempre visibles) */}
-                <View className="mb-4 space-y-2">
+                <View className="mb-4 space-y-3">
                   <Text className="text-xs mb-1 text-zinc-500 dark:text-zinc-400">
                     Tu contraseña debe incluir:
                   </Text>
@@ -237,17 +258,15 @@ export default function SignupScreen() {
                     return (
                       <View
                         key={key}
-                        className="flex-row items-center"
-                        style={{ gap: 10 }}
+                        className="flex-row items-center gap-3"
                       >
-                        <View
-                          className={`h-5 w-5 rounded-full ${dotClass}`}
-                        />
+                        <View className={`h-5 w-5 rounded-full ${dotClass}`} />
                         <Text className={`text-sm ${textClass}`}>{label}</Text>
                       </View>
                     );
                   })}
                 </View>
+
 
                 {/* Confirm Password */}
                 <View className="mb-2">
@@ -299,7 +318,7 @@ export default function SignupScreen() {
                   <Button
                     onPress={onSubmit}
                     className={!canSubmit ? "opacity-70" : ""}
-                    disabled={!canSubmit}
+                    disabled={loading}
                   >
                     <Text className="font-medium text-white dark:text-zinc-900 text-lg">
                       {loading ? "Registrando..." : "Sign up"}
