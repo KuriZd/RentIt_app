@@ -1,4 +1,3 @@
-// app/cart/index.tsx
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, {
@@ -138,8 +137,6 @@ function rowToUI(row: any): Item {
     state: row.estado as CartItemState | undefined,
   };
 }
-
-// ---------- TOASTS ----------
 
 function AnimatedToast({ toast, onDismiss }: ToastProps) {
   const translateY = useRef(new Animated.Value(-100)).current;
@@ -365,8 +362,6 @@ function useToast() {
   return { toast, showToast, hideToast };
 }
 
-// ---------- UI helpers ----------
-
 function QtyControl({
   value,
   onChange,
@@ -382,6 +377,8 @@ function QtyControl({
   text: string;
   icon: string;
 }) {
+  const C = useColors();
+
   return (
     <View
       className="flex-row items-center rounded-full border px-2"
@@ -581,8 +578,6 @@ function SavedCard({
     </View>
   );
 }
-
-// ---------- Screen ----------
 
 export default function ShoppingCartScreen() {
   const C = useColors();
