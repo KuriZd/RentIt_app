@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import React, { useMemo, useState } from "react";
+import * as Notifications from "expo-notifications";
+import React, { useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -48,6 +49,66 @@ type Props = {
 
 const mapPeriodToUnidad = (p: Period): UnidadPrecio =>
   p === "hour" ? "hora" : p === "day" ? "dia" : "semana";
+
+type ToastState =
+  | {
+    type: "success" | "error";
+    title: string;
+    message?: string;
+  }
+  | null;
+
+function getPublishErrorMessage(err: any): string {
+  const raw = err?.message || "";
+  const msg = raw.toLowerCase();
+
+  // Sin mensaje → fallback genérico
+  if (!raw) {
+    return "Ocurrió un problema al publicar tu artículo. Intenta de nuevo en unos minutos.";
+  }
+
+  // Sesión / auth
+  if (msg.includes("jwt") || msg.includes("session") || msg.includes("auth")) {
+    return "Tu sesión ha expirado. Vuelve a iniciar sesión e inténtalo de nuevo.";
+  }
+
+  // Permisos / RLS
+  if (msg.includes("permission denied") || msg.includes("rls")) {
+    return "No tienes permisos para realizar esta acción.";
+  }
+
+  // Red / red lenta
+  if (
+    msg.includes("network") ||
+    msg.includes("fetch") ||
+    msg.includes("timeout")
+  ) {
+    return "No pudimos conectar con el servidor. Revisa tu conexión a internet e inténtalo nuevamente.";
+  }
+
+  // Conflictos de unicidad (por si en futuro tienes algo único)
+  if (
+    msg.includes("duplicate key") ||
+    msg.includes("unique constraint") ||
+    msg.includes("23505")
+  ) {
+    return "Ya existe un registro con estos datos. Revisa la información del artículo.";
+  }
+
+  // Errores al subir imágenes (los que tú mismo lanzas: "Error subiendo ...")
+  if (msg.includes("error subiendo")) {
+    return "No se pudieron subir algunas fotos. Intenta de nuevo con menos imágenes o en menor resolución.";
+  }
+
+  // Error que tú lanzas: "No se obtuvo el id del artículo."
+  if (msg.includes("no se obtuvo el id del artículo")) {
+    return "El artículo no pudo completarse correctamente. Intenta publicar de nuevo.";
+  }
+
+  // Fallback genérico
+  return "No se pudo publicar el artículo. Inténtalo de nuevo en unos minutos.";
+}
+
 
 export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
   const scheme = useColorScheme();
@@ -100,6 +161,12 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
   const [showCurrencyMenu, setShowCurrencyMenu] = useState(false);
 
   const [images, setImages] = useState<LocalAsset[]>([]);
+  const [toast, setToast] = useState<ToastState>(null);
+
+
+
+  // 🔒 Evitar submit doble
+  const submittingRef = useRef(false);
 
   const pickImages = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -179,28 +246,69 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
 
   const onlyInt = (s: string) => s.replace(/[^\d]/g, "");
 
+  const resetForm = () => {
+    setTitle("");
+    setPrice("");
+    setPeriod("day");
+    setPeriodQty("1");
+    setCurrency("USD");
+    setCategory(null);
+    setDesc("");
+    setEstadoArticulo("como_nuevo");
+    setEstadoPublicacion("publicado");
+    setValorReposicion("");
+    setDepositoSeguridad("");
+    setDuracionMinHoras("");
+    setDuracionMaxDias("");
+    setCantidadDisponible("1");
+    setDeliveryMode("retiro");
+    setTarifaEntrega("");
+    setLongitud("");
+    setImages([]);
+  };
+
   const submit = async () => {
-    if (loading) return;
+    if (loading || submittingRef.current) return;
+
     if (!title.trim()) {
-      Alert.alert("Falta título", "Agrega un título para tu artículo.");
+      setToast({
+        type: "error",
+        title: "Falta título",
+        message: "Agrega un título para tu artículo.",
+      });
+      setTimeout(() => setToast(null), 2500);
       return;
     }
+
     const priceNum = Number(price);
     if (!price || isNaN(priceNum) || priceNum <= 0) {
-      Alert.alert("Precio inválido", "Ingresa un número mayor a 0.");
+      setToast({
+        type: "error",
+        title: "Precio inválido",
+        message: "Ingresa un número mayor a 0.",
+      });
+      setTimeout(() => setToast(null), 2500);
       return;
     }
+
     const qty = Math.max(1, parseInt(onlyInt(periodQty || "1"), 10));
     if (
       deliveryMode === "entrega" &&
       (!tarifaEntrega || Number(tarifaEntrega) < 0)
     ) {
-      Alert.alert("Tarifa de entrega", "Agrega una tarifa válida.");
+      setToast({
+        type: "error",
+        title: "Tarifa de entrega",
+        message: "Agrega una tarifa válida.",
+      });
+      setTimeout(() => setToast(null), 2500);
       return;
     }
 
     try {
       setLoading(true);
+      submittingRef.current = true;
+
       const { data: authData, error: userErr } = await supabase.auth.getUser();
       if (userErr || !authData.user) throw new Error("No hay sesión activa.");
       const userId = authData.user.id;
@@ -280,38 +388,65 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
         });
       }
 
-      Alert.alert(
-        estadoPublicacion === "publicado" ? "Publicado" : "Guardado",
-        estadoPublicacion === "publicado"
-          ? "Tu artículo se publicó correctamente."
-          : "Tu borrador se guardó correctamente."
-      );
-      onClose();
-      setTitle("");
-      setPrice("");
-      setPeriod("day");
-      setPeriodQty("1");
-      setCurrency("USD");
-      setCategory(null);
-      setDesc("");
-      setEstadoArticulo("como_nuevo");
-      setEstadoPublicacion("publicado");
-      setValorReposicion("");
-      setDepositoSeguridad("");
-      setDuracionMinHoras("");
-      setDuracionMaxDias("");
-      setCantidadDisponible("1");
-      setDeliveryMode("retiro");
-      setTarifaEntrega("");
-      setLongitud("");
-      setImages([]);
+      // Notificación local (si la quieres quitar, comenta este bloque)
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title:
+              estadoPublicacion === "publicado"
+                ? "Artículo publicado"
+                : "Borrador guardado",
+            body:
+              estadoPublicacion === "publicado"
+                ? `Tu artículo "${title.trim()}" ya está disponible.`
+                : "Tu borrador se guardó correctamente.",
+            data: { articuloId },
+          },
+          trigger: null,
+        });
+      } catch (notifErr) {
+        console.log("Error enviando notificación local", notifErr);
+      }
+
+      setToast({
+        type: "success",
+        title:
+          estadoPublicacion === "publicado"
+            ? "Artículo publicado"
+            : "Borrador guardado",
+        message:
+          estadoPublicacion === "publicado"
+            ? "Tu artículo ahora está disponible para renta."
+            : "Podrás continuar editándolo más tarde.",
+      });
+
+      setTimeout(() => {
+        setToast(null);
+        onClose();
+      }, 2500);
+
+      resetForm();
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo publicar.");
+      // Log solo para ti (sin redbox en Expo)
+      if (__DEV__) {
+        console.log("Error al publicar artículo:", e);
+      }
+
+      const userMessage = getPublishErrorMessage(e);
+
+      setToast({
+        type: "error",
+        title: "Error al publicar",
+        message: userMessage,
+      });
+
+      setTimeout(() => setToast(null), 4000);
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
-  };
 
+  };
   return (
     <Modal
       visible={visible}
@@ -320,65 +455,55 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <Pressable
-        onPress={onClose}
-        className="absolute inset-0"
-        style={{ backgroundColor: COLORS.overlay }}
-      />
+      <View style={{ flex: 1, justifyContent: "flex-end" }}>
+        {/* overlay para cerrar tocando fuera */}
+        <Pressable
+          onPress={onClose}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: COLORS.overlay,
+          }}
+        />
 
-      <KeyboardAvoidingView
-        className="absolute bottom-0 w-full rounded-t-3xl"
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={{ height: "80%", backgroundColor: COLORS.sheetBg }}
-      >
-        <ScrollView
-          className="flex-1"
-          contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 24 }}
-          keyboardShouldPersistTaps="handled"
+        <KeyboardAvoidingView
+          className="absolute bottom-0 w-full rounded-t-3xl"
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ height: "80%", backgroundColor: COLORS.sheetBg }}
         >
-          <View className="flex-row items-center justify-between mb-6">
-            <Text
-              className="text-[18px] font-semibold"
-              style={{ color: COLORS.text }}
-            >
-              Publicar nuevo artículo
+
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 24 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View className="flex-row items-center justify-between mb-6">
+              <Text
+                className="text-[18px] font-semibold"
+                style={{ color: COLORS.text }}
+              >
+                Publicar nuevo artículo
+              </Text>
+              <Pressable
+                onPress={onClose}
+                className="rounded-full p-1 active:opacity-70"
+              >
+                <Feather name="x" size={22} color={COLORS.iconMuted} />
+              </Pressable>
+            </View>
+
+            <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+              Título
             </Text>
-            <Pressable
-              onPress={onClose}
-              className="rounded-full p-1 active:opacity-70"
-            >
-              <Feather name="x" size={22} color={COLORS.iconMuted} />
-            </Pressable>
-          </View>
-
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Título
-          </Text>
-          <TextInput
-            placeholder="Ej. Motosierra Husqvarna 585XP"
-            placeholderTextColor={COLORS.iconMuted}
-            value={title}
-            onChangeText={setTitle}
-            className="rounded-2xl px-4 py-3 text-base mb-4"
-            style={{
-              color: COLORS.text,
-              backgroundColor: COLORS.card,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-            }}
-          />
-
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Precio total ingresado
-          </Text>
-          <View className="flex-row items-center gap-2 mb-2">
             <TextInput
-              placeholder="$ 900"
+              placeholder="Ej. Motosierra Husqvarna 585XP"
               placeholderTextColor={COLORS.iconMuted}
-              keyboardType="numeric"
-              value={price}
-              onChangeText={setPrice}
-              className="flex-1 rounded-2xl px-4 py-3 text-base"
+              value={title}
+              onChangeText={setTitle}
+              className="rounded-2xl px-4 py-3 text-base mb-4"
               style={{
                 color: COLORS.text,
                 backgroundColor: COLORS.card,
@@ -386,102 +511,240 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
                 borderColor: COLORS.border,
               }}
             />
-            <View className="relative">
-              <Pressable
-                onPress={() => setShowCurrencyMenu(!showCurrencyMenu)}
-                className="flex-row items-center gap-1 rounded-2xl px-4 py-3 border"
-                style={{
-                  borderColor: COLORS.border,
-                  backgroundColor: COLORS.card,
-                }}
-              >
-                <Text style={{ color: COLORS.text, fontWeight: "600" }}>
-                  {currency}
-                </Text>
-                <Feather
-                  name="chevron-down"
-                  size={18}
-                  color={COLORS.iconMuted}
-                />
-              </Pressable>
 
-              {showCurrencyMenu && (
-                <View
-                  className="absolute top-14 right-0 rounded-2xl border z-50"
+            <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+              Precio total ingresado
+            </Text>
+            <View className="flex-row items-center gap-2 mb-2">
+              <TextInput
+                placeholder="$ 900"
+                placeholderTextColor={COLORS.iconMuted}
+                keyboardType="numeric"
+                value={price}
+                onChangeText={setPrice}
+                className="flex-1 rounded-2xl px-4 py-3 text-base"
+                style={{
+                  color: COLORS.text,
+                  backgroundColor: COLORS.card,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                }}
+              />
+              <View className="relative">
+                <Pressable
+                  onPress={() => setShowCurrencyMenu(!showCurrencyMenu)}
+                  className="flex-row items-center gap-1 rounded-2xl px-4 py-3 border"
                   style={{
                     borderColor: COLORS.border,
                     backgroundColor: COLORS.card,
                   }}
                 >
-                  {(["USD", "MXN", "EUR"] as Currency[]).map((c) => (
-                    <Pressable
-                      key={c}
-                      onPress={() => {
-                        setCurrency(c);
-                        setShowCurrencyMenu(false);
-                      }}
-                      className="px-4 py-2"
-                    >
-                      <Text
-                        style={{
-                          color: c === currency ? COLORS.accent : COLORS.text,
-                          fontWeight: c === currency ? "600" : "400",
+                  <Text style={{ color: COLORS.text, fontWeight: "600" }}>
+                    {currency}
+                  </Text>
+                  <Feather
+                    name="chevron-down"
+                    size={18}
+                    color={COLORS.iconMuted}
+                  />
+                </Pressable>
+
+                {showCurrencyMenu && (
+                  <View
+                    className="absolute top-14 right-0 rounded-2xl border z-50"
+                    style={{
+                      borderColor: COLORS.border,
+                      backgroundColor: COLORS.card,
+                    }}
+                  >
+                    {(["USD", "MXN", "EUR"] as Currency[]).map((c) => (
+                      <Pressable
+                        key={c}
+                        onPress={() => {
+                          setCurrency(c);
+                          setShowCurrencyMenu(false);
                         }}
+                        className="px-4 py-2"
                       >
-                        {c}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-            </View>
-          </View>
-
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Periodo (el precio ingresado corresponde a N unidades)
-          </Text>
-
-          <View className="flex-row items-center gap-8 mb-3">
-            <View>
-              <Text
-                className="text-[13px] mb-1"
-                style={{ color: COLORS.subtext }}
-              >
-                Cantidad
-              </Text>
-              <View className="flex-row gap-2 mt-2">
-                {(["hour", "day", "week"] as Period[]).map((p) => {
-                  const active = p === period;
-                  return (
-                    <Pressable
-                      key={p}
-                      onPress={() => setPeriod(p)}
-                      className="px-4 py-2 rounded-2xl border"
-                      style={{
-                        backgroundColor: active ? COLORS.accent : "transparent",
-                        borderColor: active ? COLORS.accent : COLORS.border,
-                      }}
-                    >
-                      <Text
-                        className="text-sm font-medium"
-                        style={{ color: active ? "#fff" : COLORS.text }}
-                      >
-                        {p === "hour" ? "Hora" : p === "day" ? "Día" : "Semana"}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+                        <Text
+                          style={{
+                            color: c === currency ? COLORS.accent : COLORS.text,
+                            fontWeight: c === currency ? "600" : "400",
+                          }}
+                        >
+                          {c}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
               </View>
             </View>
 
-            <View style={{ minWidth: 80, marginTop: 27 }}>
+            <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+              Periodo (el precio ingresado corresponde a N unidades)
+            </Text>
+
+            <View className="flex-row items-center gap-8 mb-3">
+              <View>
+                <Text
+                  className="text-[13px] mb-1"
+                  style={{ color: COLORS.subtext }}
+                >
+                  Cantidad
+                </Text>
+                <View className="flex-row gap-2 mt-2">
+                  {(["hour", "day", "week"] as Period[]).map((p) => {
+                    const active = p === period;
+                    return (
+                      <Pressable
+                        key={p}
+                        onPress={() => setPeriod(p)}
+                        className="px-4 py-2 rounded-2xl border"
+                        style={{
+                          backgroundColor: active ? COLORS.accent : "transparent",
+                          borderColor: active ? COLORS.accent : COLORS.border,
+                        }}
+                      >
+                        <Text
+                          className="text-sm font-medium"
+                          style={{ color: active ? "#fff" : COLORS.text }}
+                        >
+                          {p === "hour" ? "Hora" : p === "day" ? "Día" : "Semana"}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={{ minWidth: 80, marginTop: 27 }}>
+                <TextInput
+                  value={periodQty}
+                  onChangeText={(t) => setPeriodQty(t.replace(/[^\d]/g, ""))}
+                  keyboardType="number-pad"
+                  placeholder="3"
+                  placeholderTextColor={COLORS.iconMuted}
+                  className="rounded-2xl px-4 py-2 text-base text-center"
+                  style={{
+                    color: COLORS.text,
+                    backgroundColor: COLORS.card,
+                    borderWidth: 1,
+                    borderColor: COLORS.border,
+                  }}
+                />
+              </View>
+            </View>
+
+            {price?.trim() && Number(price) > 0 && (
+              <Text
+                className="text-[13px] mb-6"
+                style={{ color: COLORS.subtext }}
+              >
+                Guardarás:{" "}
+                <Text style={{ color: COLORS.text, fontWeight: "600" }}>
+                  {currency}{" "}
+                  {(
+                    Number(price) / Math.max(1, parseInt(periodQty || "1", 10))
+                  ).toFixed(2)}
+                </Text>{" "}
+                por{" "}
+                {period === "hour" ? "hora" : period === "day" ? "día" : "semana"}{" "}
+                · Mostrando como:{" "}
+                <Text style={{ color: COLORS.text, fontWeight: "600" }}>
+                  {currency} {Number(price).toFixed(2)}
+                </Text>{" "}
+                por {periodQty || "1"}{" "}
+                {period === "hour"
+                  ? "hora(s)"
+                  : period === "day"
+                    ? "día(s)"
+                    : "semana(s)"}
+                .
+              </Text>
+            )}
+
+            <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+              Condición del artículo
+            </Text>
+            <View className="flex-row flex-wrap gap-2 mb-6">
+              {(
+                ["nuevo", "como_nuevo", "bueno", "aceptable"] as EstadoArticulo[]
+              ).map((e) => {
+                const active = e === estadoArticulo;
+                return (
+                  <Pressable
+                    key={e}
+                    onPress={() => setEstadoArticulo(e)}
+                    className="px-4 py-2 rounded-2xl border"
+                    style={{
+                      backgroundColor: active ? COLORS.accent : "transparent",
+                      borderColor: active ? COLORS.accent : COLORS.border,
+                    }}
+                  >
+                    <Text
+                      className="text-sm font-medium"
+                      style={{ color: active ? "#fff" : COLORS.text }}
+                    >
+                      {e.replace("_", " ")}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+              Estado de publicación
+            </Text>
+            <View className="flex-row gap-2 mb-6">
+              {(["borrador", "publicado"] as EstadoPublicacion[]).map((s) => {
+                const active = s === estadoPublicacion;
+                return (
+                  <Pressable
+                    key={s}
+                    onPress={() => setEstadoPublicacion(s)}
+                    className="px-4 py-2 rounded-2xl border"
+                    style={{
+                      backgroundColor: active ? COLORS.accent : "transparent",
+                      borderColor: active ? COLORS.accent : COLORS.border,
+                    }}
+                  >
+                    <Text
+                      className="text-sm font-medium"
+                      style={{ color: active ? "#fff" : COLORS.text }}
+                    >
+                      {s}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+              Valores adicionales
+            </Text>
+            <View className="flex-row gap-2 mb-2 ">
               <TextInput
-                value={periodQty}
-                onChangeText={(t) => setPeriodQty(t.replace(/[^\d]/g, ""))}
-                keyboardType="number-pad"
-                placeholder="3"
+                placeholder="Valor de reposición"
                 placeholderTextColor={COLORS.iconMuted}
-                className="rounded-2xl px-4 py-2 text-base text-center"
+                keyboardType="numeric"
+                value={valorReposicion}
+                onChangeText={setValorReposicion}
+                className="flex-1 rounded-2xl px-4 py-3 text-base"
+                style={{
+                  color: COLORS.text,
+                  backgroundColor: COLORS.card,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                }}
+              />
+              <TextInput
+                placeholder="Depósito seguridad"
+                placeholderTextColor={COLORS.iconMuted}
+                keyboardType="numeric"
+                value={depositoSeguridad}
+                onChangeText={setDepositoSeguridad}
+                className="flex-1 rounded-2xl px-4 py-3 text-base"
                 style={{
                   color: COLORS.text,
                   backgroundColor: COLORS.card,
@@ -490,383 +753,331 @@ export default function NewItemSheet({ visible, onClose, onPublish }: Props) {
                 }}
               />
             </View>
-          </View>
 
-          {price?.trim() && Number(price) > 0 && (
-            <Text
-              className="text-[13px] mb-6"
-              style={{ color: COLORS.subtext }}
-            >
-              Guardarás:{" "}
-              <Text style={{ color: COLORS.text, fontWeight: "600" }}>
-                {currency}{" "}
-                {(
-                  Number(price) / Math.max(1, parseInt(periodQty || "1", 10))
-                ).toFixed(2)}
-              </Text>{" "}
-              por{" "}
-              {period === "hour" ? "hora" : period === "day" ? "día" : "semana"}{" "}
-              · Mostrando como:{" "}
-              <Text style={{ color: COLORS.text, fontWeight: "600" }}>
-                {currency} {Number(price).toFixed(2)}
-              </Text>{" "}
-              por {periodQty || "1"}{" "}
-              {period === "hour"
-                ? "hora(s)"
-                : period === "day"
-                  ? "día(s)"
-                  : "semana(s)"}
-              .
-            </Text>
-          )}
-
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Condición del artículo
-          </Text>
-          <View className="flex-row flex-wrap gap-2 mb-6">
-            {(
-              ["nuevo", "como_nuevo", "bueno", "aceptable"] as EstadoArticulo[]
-            ).map((e) => {
-              const active = e === estadoArticulo;
-              return (
-                <Pressable
-                  key={e}
-                  onPress={() => setEstadoArticulo(e)}
-                  className="px-4 py-2 rounded-2xl border"
-                  style={{
-                    backgroundColor: active ? COLORS.accent : "transparent",
-                    borderColor: active ? COLORS.accent : COLORS.border,
-                  }}
-                >
-                  <Text
-                    className="text-sm font-medium"
-                    style={{ color: active ? "#fff" : COLORS.text }}
-                  >
-                    {e.replace("_", " ")}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Estado de publicación
-          </Text>
-          <View className="flex-row gap-2 mb-6">
-            {(["borrador", "publicado"] as EstadoPublicacion[]).map((s) => {
-              const active = s === estadoPublicacion;
-              return (
-                <Pressable
-                  key={s}
-                  onPress={() => setEstadoPublicacion(s)}
-                  className="px-4 py-2 rounded-2xl border"
-                  style={{
-                    backgroundColor: active ? COLORS.accent : "transparent",
-                    borderColor: active ? COLORS.accent : COLORS.border,
-                  }}
-                >
-                  <Text
-                    className="text-sm font-medium"
-                    style={{ color: active ? "#fff" : COLORS.text }}
-                  >
-                    {s}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Valores adicionales
-          </Text>
-          <View className="flex-row gap-2 mb-2 ">
-            <TextInput
-              placeholder="Valor de reposición"
-              placeholderTextColor={COLORS.iconMuted}
-              keyboardType="numeric"
-              value={valorReposicion}
-              onChangeText={setValorReposicion}
-              className="flex-1 rounded-2xl px-4 py-3 text-base"
-              style={{
-                color: COLORS.text,
-                backgroundColor: COLORS.card,
-                borderWidth: 1,
-                borderColor: COLORS.border,
-              }}
-            />
-            <TextInput
-              placeholder="Depósito seguridad"
-              placeholderTextColor={COLORS.iconMuted}
-              keyboardType="numeric"
-              value={depositoSeguridad}
-              onChangeText={setDepositoSeguridad}
-              className="flex-1 rounded-2xl px-4 py-3 text-base"
-              style={{
-                color: COLORS.text,
-                backgroundColor: COLORS.card,
-                borderWidth: 1,
-                borderColor: COLORS.border,
-              }}
-            />
-          </View>
-
-          <View className="flex-row gap-2 mb-2 py-6">
-            <TextInput
-              placeholder="Mín. horas (ej. 2)"
-              placeholderTextColor={COLORS.iconMuted}
-              keyboardType="number-pad"
-              value={duracionMinHoras}
-              onChangeText={setDuracionMinHoras}
-              className="flex-1 rounded-2xl px-4 py-3 text-base"
-              style={{
-                color: COLORS.text,
-                backgroundColor: COLORS.card,
-                borderWidth: 1,
-                borderColor: COLORS.border,
-              }}
-            />
-            <TextInput
-              placeholder="Máx. días (ej. 7)"
-              placeholderTextColor={COLORS.iconMuted}
-              keyboardType="number-pad"
-              value={duracionMaxDias}
-              onChangeText={setDuracionMaxDias}
-              className="flex-1 rounded-2xl px-4 py-3 text-base"
-              style={{
-                color: COLORS.text,
-                backgroundColor: COLORS.card,
-                borderWidth: 1,
-                borderColor: COLORS.border,
-              }}
-            />
-          </View>
-
-          <View className="flex-row gap-2 mb-6">
-            <TextInput
-              placeholder="Cantidad disponible"
-              placeholderTextColor={COLORS.iconMuted}
-              keyboardType="number-pad"
-              value={cantidadDisponible}
-              onChangeText={setCantidadDisponible}
-              className="flex-1 rounded-2xl px-4 py-3 text-base"
-              style={{
-                color: COLORS.text,
-                backgroundColor: COLORS.card,
-                borderWidth: 1,
-                borderColor: COLORS.border,
-              }}
-            />
-          </View>
-
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Método de entrega
-          </Text>
-          <View className="flex-row items-center gap-2 mb-3">
-            <View className="relative">
-              <Pressable
-                onPress={() => setShowDeliveryMenu((v) => !v)}
-                className="flex-row items-center gap-2 rounded-2xl px-4 py-3 border"
+            <View className="flex-row gap-2 mb-2 py-6">
+              <TextInput
+                placeholder="Mín. horas (ej. 2)"
+                placeholderTextColor={COLORS.iconMuted}
+                keyboardType="number-pad"
+                value={duracionMinHoras}
+                onChangeText={setDuracionMinHoras}
+                className="flex-1 rounded-2xl px-4 py-3 text-base"
                 style={{
-                  borderColor: COLORS.border,
+                  color: COLORS.text,
                   backgroundColor: COLORS.card,
-                  minWidth: 200,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
                 }}
-              >
-                <Text style={{ color: COLORS.text, fontWeight: "600" }}>
-                  {deliveryMode === "retiro"
-                    ? "Solo retiro"
-                    : "Entrega disponible"}
-                </Text>
-                <Feather
-                  name="chevron-down"
-                  size={18}
-                  color={COLORS.iconMuted}
-                />
-              </Pressable>
+              />
+              <TextInput
+                placeholder="Máx. días (ej. 7)"
+                placeholderTextColor={COLORS.iconMuted}
+                keyboardType="number-pad"
+                value={duracionMaxDias}
+                onChangeText={setDuracionMaxDias}
+                className="flex-1 rounded-2xl px-4 py-3 text-base"
+                style={{
+                  color: COLORS.text,
+                  backgroundColor: COLORS.card,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                }}
+              />
+            </View>
 
-              {showDeliveryMenu && (
-                <View
-                  className="absolute top-14 left-0 right-0 z-50 rounded-2xl border"
+            <View className="flex-row gap-2 mb-6">
+              <TextInput
+                placeholder="Cantidad disponible"
+                placeholderTextColor={COLORS.iconMuted}
+                keyboardType="number-pad"
+                value={cantidadDisponible}
+                onChangeText={setCantidadDisponible}
+                className="flex-1 rounded-2xl px-4 py-3 text-base"
+                style={{
+                  color: COLORS.text,
+                  backgroundColor: COLORS.card,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                }}
+              />
+            </View>
+
+            <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+              Método de entrega
+            </Text>
+            <View className="flex-row items-center gap-2 mb-3">
+              <View className="relative">
+                <Pressable
+                  onPress={() => setShowDeliveryMenu((v) => !v)}
+                  className="flex-row items-center gap-2 rounded-2xl px-4 py-3 border"
                   style={{
                     borderColor: COLORS.border,
                     backgroundColor: COLORS.card,
+                    minWidth: 200,
                   }}
                 >
-                  {(["retiro", "entrega"] as DeliveryMode[]).map((m) => (
-                    <Pressable
-                      key={m}
-                      onPress={() => {
-                        setDeliveryMode(m);
-                        setShowDeliveryMenu(false);
-                        if (m === "retiro") setTarifaEntrega("");
-                      }}
-                      className="px-4 py-2"
-                    >
-                      <Text
-                        style={{
-                          color:
-                            m === deliveryMode ? COLORS.accent : COLORS.text,
-                          fontWeight: m === deliveryMode ? "600" : "400",
+                  <Text style={{ color: COLORS.text, fontWeight: "600" }}>
+                    {deliveryMode === "retiro"
+                      ? "Solo retiro"
+                      : "Entrega disponible"}
+                  </Text>
+                  <Feather
+                    name="chevron-down"
+                    size={18}
+                    color={COLORS.iconMuted}
+                  />
+                </Pressable>
+
+                {showDeliveryMenu && (
+                  <View
+                    className="absolute top-14 left-0 right-0 z-50 rounded-2xl border"
+                    style={{
+                      borderColor: COLORS.border,
+                      backgroundColor: COLORS.card,
+                    }}
+                  >
+                    {(["retiro", "entrega"] as DeliveryMode[]).map((m) => (
+                      <Pressable
+                        key={m}
+                        onPress={() => {
+                          setDeliveryMode(m);
+                          setShowDeliveryMenu(false);
+                          if (m === "retiro") setTarifaEntrega("");
                         }}
+                        className="px-4 py-2"
                       >
-                        {m === "retiro" ? "Solo retiro" : "Entrega disponible"}
+                        <Text
+                          style={{
+                            color:
+                              m === deliveryMode ? COLORS.accent : COLORS.text,
+                            fontWeight: m === deliveryMode ? "600" : "400",
+                          }}
+                        >
+                          {m === "retiro" ? "Solo retiro" : "Entrega disponible"}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+
+              <TextInput
+                editable={deliveryMode === "entrega"}
+                placeholder="Tarifa entrega"
+                placeholderTextColor={COLORS.iconMuted}
+                keyboardType="numeric"
+                value={tarifaEntrega}
+                onChangeText={setTarifaEntrega}
+                className="flex-1 rounded-2xl px-4 py-3 text-base"
+                style={{
+                  color: COLORS.text,
+                  backgroundColor: COLORS.card,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                  opacity: deliveryMode === "entrega" ? 1 : 0.6,
+                }}
+              />
+            </View>
+
+            <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+              Categoría
+            </Text>
+            <Pressable
+              onPress={() => setShowCategories(true)}
+              className="rounded-2xl px-4 py-3 flex-row items-center justify-between mb-6"
+              style={{
+                backgroundColor: COLORS.card,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
+            >
+              <Text
+                className="text-base"
+                style={{ color: category ? COLORS.text : COLORS.iconMuted }}
+              >
+                {category ? category.label : "Elige una categoría"}
+              </Text>
+              <Feather name="chevron-right" size={20} color={COLORS.iconMuted} />
+            </Pressable>
+
+            <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+              Descripción
+            </Text>
+            <TextInput
+              placeholder="Detalles, estado, condiciones y políticas de renta…"
+              placeholderTextColor={COLORS.iconMuted}
+              value={desc}
+              onChangeText={setDesc}
+              multiline
+              numberOfLines={5}
+              textAlignVertical="top"
+              className="rounded-2xl px-4 py-3 text-base mb-6"
+              style={{
+                color: COLORS.text,
+                backgroundColor: COLORS.card,
+                borderWidth: 1,
+                borderColor: COLORS.border,
+              }}
+            />
+
+            <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
+              Fotos
+            </Text>
+            <View
+              className="rounded-2xl mb-6 border bg-white dark:bg-zinc-900"
+              style={{ borderColor: COLORS.dashed, borderStyle: "dashed" }}
+            >
+              {images.length === 0 ? (
+                <Pressable
+                  onPress={pickImages}
+                  className="h-36 w-full items-center justify-center active:opacity-80"
+                >
+                  <Text className="text-sm" style={{ color: COLORS.subtext }}>
+                    Agregar fotos
+                  </Text>
+                </Pressable>
+              ) : (
+                <View className="p-3">
+                  <View className="flex-row flex-wrap">
+                    {images.map((img, idx) => (
+                      <View key={`${img.uri}-${idx}`} className="w-24 h-24 m-1">
+                        <Image
+                          source={{ uri: img.uri }}
+                          className="w-full h-full rounded-xl border"
+                          style={{ borderColor: COLORS.border }}
+                        />
+                        <Pressable
+                          onPress={() => removeImage(idx)}
+                          className="absolute -top-2 -right-2 px-2 py-1 rounded-full"
+                          style={{
+                            backgroundColor: isDark ? "#fff" : "rgba(0,0,0,0.85)",
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Quitar imagen"
+                        >
+                          <Text
+                            className="text-xs"
+                            style={{ color: isDark ? "#000" : "#fff" }}
+                          >
+                            Quitar
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ))}
+                    <Pressable
+                      onPress={pickImages}
+                      className="w-24 h-24 m-1 items-center justify-center rounded-xl border active:opacity-80"
+                      style={{
+                        borderColor: COLORS.dashed,
+                        borderStyle: "dashed",
+                      }}
+                    >
+                      <Feather name="plus" size={22} color={COLORS.iconMuted} />
+                      <Text
+                        className="mt-1 text-xs"
+                        style={{ color: COLORS.subtext }}
+                      >
+                        Agregar
                       </Text>
                     </Pressable>
-                  ))}
+                  </View>
                 </View>
               )}
             </View>
 
-            <TextInput
-              editable={deliveryMode === "entrega"}
-              placeholder="Tarifa entrega"
-              placeholderTextColor={COLORS.iconMuted}
-              keyboardType="numeric"
-              value={tarifaEntrega}
-              onChangeText={setTarifaEntrega}
-              className="flex-1 rounded-2xl px-4 py-3 text-base"
-              style={{
-                color: COLORS.text,
-                backgroundColor: COLORS.card,
-                borderWidth: 1,
-                borderColor: COLORS.border,
-                opacity: deliveryMode === "entrega" ? 1 : 0.6,
-              }}
-            />
-          </View>
+            <View className="flex-row justify-between mt-2">
+              <View className="flex-1 mr-2">
+                <Button label="Cancelar" variant="ghost" onPress={onClose} />
+              </View>
+              <View className="flex-1 ml-2">
+                <Button
+                  label={
+                    loading
+                      ? "Guardando…"
+                      : estadoPublicacion === "publicado"
+                        ? "Publicar"
+                        : "Guardar borrador"
+                  }
+                  variant="primary"
+                  onPress={submit}
+                />
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
 
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Categoría
-          </Text>
-          <Pressable
-            onPress={() => setShowCategories(true)}
-            className="rounded-2xl px-4 py-3 flex-row items-center justify-between mb-6"
-            style={{
-              backgroundColor: COLORS.card,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-            }}
-          >
-            <Text
-              className="text-base"
-              style={{ color: category ? COLORS.text : COLORS.iconMuted }}
-            >
-              {category ? category.label : "Elige una categoría"}
-            </Text>
-            <Feather name="chevron-right" size={20} color={COLORS.iconMuted} />
-          </Pressable>
-
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Descripción
-          </Text>
-          <TextInput
-            placeholder="Detalles, estado, condiciones y políticas de renta…"
-            placeholderTextColor={COLORS.iconMuted}
-            value={desc}
-            onChangeText={setDesc}
-            multiline
-            numberOfLines={5}
-            textAlignVertical="top"
-            className="rounded-2xl px-4 py-3 text-base mb-6"
-            style={{
-              color: COLORS.text,
-              backgroundColor: COLORS.card,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-            }}
-          />
-
-          <Text className="text-[15px] mb-2" style={{ color: COLORS.subtext }}>
-            Fotos
-          </Text>
+        {/* Toast estilizado */}
+        {toast && (
           <View
-            className="rounded-2xl mb-6 border bg-white dark:bg-zinc-900"
-            style={{ borderColor: COLORS.dashed, borderStyle: "dashed" }}
+            pointerEvents="box-none"
+            style={{
+              position: "absolute",
+              top: Platform.OS === "ios" ? 60 : 40,
+              left: 16,
+              right: 16,
+              zIndex: 999,
+            }}
           >
-            {images.length === 0 ? (
-              <Pressable
-                onPress={pickImages}
-                className="h-36 w-full items-center justify-center active:opacity-80"
-              >
-                <Text className="text-sm" style={{ color: COLORS.subtext }}>
-                  Agregar fotos
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                borderRadius: 18,
+                backgroundColor:
+                  toast.type === "success" ? "#16a34a" : "#dc2626",
+                shadowColor: "#000",
+                shadowOpacity: 0.25,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 10,
+              }}
+            >
+              <Feather
+                name={
+                  toast.type === "success" ? "check-circle" : "alert-triangle"
+                }
+                size={18}
+                color="#fff"
+                style={{ marginTop: 2, marginRight: 8 }}
+              />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontSize: 14,
+                    fontWeight: "600",
+                  }}
+                >
+                  {toast.title}
                 </Text>
-              </Pressable>
-            ) : (
-              <View className="p-3">
-                <View className="flex-row flex-wrap">
-                  {images.map((img, idx) => (
-                    <View key={`${img.uri}-${idx}`} className="w-24 h-24 m-1">
-                      <Image
-                        source={{ uri: img.uri }}
-                        className="w-full h-full rounded-xl border"
-                        style={{ borderColor: COLORS.border }}
-                      />
-                      <Pressable
-                        onPress={() => removeImage(idx)}
-                        className="absolute -top-2 -right-2 px-2 py-1 rounded-full"
-                        style={{
-                          backgroundColor: isDark ? "#fff" : "rgba(0,0,0,0.85)",
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Quitar imagen"
-                      >
-                        <Text
-                          className="text-xs"
-                          style={{ color: isDark ? "#000" : "#fff" }}
-                        >
-                          Quitar
-                        </Text>
-                      </Pressable>
-                    </View>
-                  ))}
-                  <Pressable
-                    onPress={pickImages}
-                    className="w-24 h-24 m-1 items-center justify-center rounded-xl border active:opacity-80"
+                {toast.message ? (
+                  <Text
                     style={{
-                      borderColor: COLORS.dashed,
-                      borderStyle: "dashed",
+                      color: "#fff",
+                      fontSize: 12,
+                      marginTop: 4,
+                      opacity: 0.9,
                     }}
                   >
-                    <Feather name="plus" size={22} color={COLORS.iconMuted} />
-                    <Text
-                      className="mt-1 text-xs"
-                      style={{ color: COLORS.subtext }}
-                    >
-                      Agregar
-                    </Text>
-                  </Pressable>
-                </View>
+                    {toast.message}
+                  </Text>
+                ) : null}
               </View>
-            )}
-          </View>
-
-          <View className="flex-row justify-between mt-2">
-            <View className="flex-1 mr-2">
-              <Button label="Cancelar" variant="ghost" onPress={onClose} />
-            </View>
-            <View className="flex-1 ml-2">
-              <Button
-                label={
-                  loading
-                    ? "Guardando…"
-                    : estadoPublicacion === "publicado"
-                      ? "Publicar"
-                      : "Guardar borrador"
-                }
-                variant="primary"
-                onPress={submit}
-              />
+              <Pressable onPress={() => setToast(null)}>
+                <Feather name="x" size={16} color="#fff" />
+              </Pressable>
             </View>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        )}
 
-      <CategoriesSheet
-        visible={showCategories}
-        onClose={() => setShowCategories(false)}
-        onSelect={(cat) => setCategory(cat)}
-      />
+        <CategoriesSheet
+          visible={showCategories}
+          onClose={() => setShowCategories(false)}
+          onSelect={(cat) => setCategory(cat)}
+        />
+      </View>
     </Modal>
   );
 }

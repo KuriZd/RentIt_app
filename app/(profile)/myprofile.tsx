@@ -28,9 +28,7 @@ type Address = {
 type Profile = {
   name?: string | null;
   avatar?: string | null;
-  curp?: string | null;
   gender?: string | null;
-  marital?: string | null;
   email?: string | null;
   medicalId?: string | null;
   address: Address;
@@ -97,7 +95,7 @@ export default function EditProfileScreen() {
         const { data, error } = await supabase
           .from("perfiles")
           .select(
-            "nombre, avatar_url, curp, genero, estado_civil, email, numero_medico, direccion"
+            "nombre, avatar_url, genero, email, telefono, direccion"
           )
           .eq("id", user.id)
           .maybeSingle();
@@ -116,9 +114,7 @@ export default function EditProfileScreen() {
         const p: Profile = {
           name: (data as any).nombre ?? null,
           avatar: (data as any).avatar_url ?? null,
-          curp: (data as any).curp ?? null,
           gender: (data as any).genero ?? null,
-          marital: (data as any).estado_civil ?? null,
           email: (data as any).email ?? null,
           medicalId: (data as any).numero_medico ?? null,
           address: {
@@ -127,7 +123,7 @@ export default function EditProfileScreen() {
             postalCode: dir.cp ?? null,
             city: dir.municipio ?? null,
             state: dir.estado ?? null,
-            phone: dir.telefono ?? null,
+            phone: (data as any).telefono ?? dir.telefono ?? null,
           },
         };
 
@@ -199,11 +195,8 @@ export default function EditProfileScreen() {
             <View className="mt-3 h-1 w-24 rounded-full bg-zinc-200 dark:bg-zinc-700" />
           </View>
           <Field label="Name" value={user?.name} />
-          <Field label="CURP" value={user?.curp} />
           <Field label="Gender" value={user?.gender} />
-          <Field label="Marital Status" value={user?.marital} />
           <Field label="Email Address" value={user?.email} />
-          <Field label="N° de servicio médico" value={user?.medicalId} />
         </SectionCard>
 
         {/* Dirección */}

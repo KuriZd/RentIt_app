@@ -31,6 +31,14 @@ type Articulo = {
     estado_articulo: string | null;
 };
 
+type ToastState =
+    | {
+        type: "success" | "error";
+        title: string;
+        message?: string;
+    }
+    | null;
+
 export default function MyItemsScreen() {
     const router = useRouter();
     const scheme = useColorScheme();
@@ -43,7 +51,8 @@ export default function MyItemsScreen() {
             icon: isDark ? "#e5e7eb" : "#111827",
             iconMuted: isDark ? "#a1a1aa" : "#6b7280",
             ring: isDark ? "#3f3f46" : "#e5e7eb",
-            overlay: "rgba(0,0,0,0.30)",
+            overlay: "rgba(0,0,0,0.35)",
+            card: isDark ? "#18181b" : "#ffffff",
         }),
         [isDark]
     );
@@ -52,6 +61,19 @@ export default function MyItemsScreen() {
 
     const [items, setItems] = useState<Articulo[]>([]);
     const [loading, setLoading] = useState(true);
+    const [deletingId, setDeletingId] = useState<number | null>(null);
+    const [toast, setToast] = useState<ToastState>(null);
+
+    // Artículo seleccionado para confirmar eliminación
+    const [confirmItem, setConfirmItem] = useState<Articulo | null>(null);
+
+    const showToast = useCallback((t: ToastState, duration = 2500) => {
+        if (!t) return;
+        setToast(t);
+        setTimeout(() => {
+            setToast(null);
+        }, duration);
+    }, []);
 
     const loadItems = useCallback(async () => {
         try {
@@ -63,7 +85,7 @@ export default function MyItemsScreen() {
             } = await supabase.auth.getUser();
 
             if (userError || !user) {
-                console.error(userError);
+                if (__DEV__) console.log(userError);
                 setItems([]);
                 setLoading(false);
                 return;
@@ -79,7 +101,7 @@ export default function MyItemsScreen() {
                 .order("creado_en", { ascending: false });
 
             if (error) {
-                console.error(error);
+                if (__DEV__) console.log(error);
                 setItems([]);
                 setLoading(false);
                 return;
@@ -87,7 +109,7 @@ export default function MyItemsScreen() {
 
             setItems((data || []) as Articulo[]);
         } catch (e) {
-            console.error(e);
+            if (__DEV__) console.log(e);
             setItems([]);
         } finally {
             setLoading(false);
@@ -98,6 +120,48 @@ export default function MyItemsScreen() {
         loadItems();
     }, [loadItems]);
 
+    const performDelete = useCallback(
+        async (item: Articulo) => {
+            try {
+                setDeletingId(item.id);
+
+                const { error } = await supabase
+                    .from("articulos")
+                    .delete()
+                    .eq("id", item.id);
+
+                if (error) {
+                    if (__DEV__) console.log("Error al eliminar artículo:", error);
+                    showToast({
+                        type: "error",
+                        title: "No se pudo eliminar",
+                        message: "Ocurrió un problema al eliminar el artículo.",
+                    });
+                    return;
+                }
+
+                setItems((prev) => prev.filter((it) => it.id !== item.id));
+
+                showToast({
+                    type: "success",
+                    title: "Artículo eliminado",
+                    message: "Tu artículo se eliminó correctamente.",
+                });
+            } catch (e) {
+                if (__DEV__) console.log("Error al eliminar artículo:", e);
+                showToast({
+                    type: "error",
+                    title: "No se pudo eliminar",
+                    message: "Ocurrió un problema al eliminar el artículo.",
+                });
+            } finally {
+                setDeletingId(null);
+                setConfirmItem(null);
+            }
+        },
+        [showToast]
+    );
+
     const renderItem = ({ item }: { item: Articulo }) => (
         <View
             className="mb-3 flex-row rounded-2xl border bg-white dark:bg-zinc-900"
@@ -106,7 +170,8 @@ export default function MyItemsScreen() {
                 padding: 10,
                 shadowOpacity: Platform.OS === "ios" ? 0.05 : 0,
                 shadowRadius: Platform.OS === "ios" ? 6 : 0,
-                shadowOffset: Platform.OS === "ios" ? { width: 0, height: 3 } : undefined,
+                shadowOffset:
+                    Platform.OS === "ios" ? { width: 0, height: 3 } : undefined,
             }}
         >
             {/* Thumbnail */}
@@ -124,39 +189,58 @@ export default function MyItemsScreen() {
                 )}
             </View>
 
-            {/* Info */}
-            <View style={{ flex: 1 }}>
-                <Text
-                    className="text-sm font-semibold text-zinc-900 dark:text-zinc-50"
-                    numberOfLines={2}
-                >
-                    {item.titulo}
-                </Text>
-
-                <View className="mt-1 flex-row items-baseline gap-1">
-                    <Text className="text-base font-bold text-emerald-600 dark:text-emerald-400">
-                        ${item.precio.toFixed(2)}
-                    </Text>
-                    <Text className="text-xs text-zinc-500 dark:text-zinc-400">
-                        / {item.periodo_cantidad ?? 1} {item.unidad_precio}
-                    </Text>
-                </View>
-
-                <View className="mt-2 flex-row items-center gap-2">
-                    <View
-                        className="rounded-full px-2 py-1"
-                        style={{ backgroundColor: COLORS.pill }}
+            {/* Info + botón eliminar */}
+            <View style={{ flex: 1, flexDirection: "row" }}>
+                <View style={{ flex: 1 }}>
+                    <Text
+                        className="text-sm font-semibold text-zinc-900 dark:text-zinc-50"
+                        numberOfLines={2}
                     >
-                        <Text className="text-[10px] font-medium text-zinc-700 dark:text-zinc-200">
-                            {item.estado_publicacion ?? "Publicado"}
+                        {item.titulo}
+                    </Text>
+
+                    <View className="mt-1 flex-row items-baseline gap-1">
+                        <Text className="text-base font-bold text-emerald-600 dark:text-emerald-400">
+                            ${item.precio.toFixed(2)}
+                        </Text>
+                        <Text className="text-xs text-zinc-500 dark:text-zinc-400">
+                            / {item.periodo_cantidad ?? 1} {item.unidad_precio}
                         </Text>
                     </View>
-                    {item.estado_articulo && (
-                        <Text className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                            Estado: {item.estado_articulo}
-                        </Text>
-                    )}
+
+                    <View className="mt-2 flex-row items-center gap-2">
+                        <View
+                            className="rounded-full px-2 py-1"
+                            style={{ backgroundColor: COLORS.pill }}
+                        >
+                            <Text className="text-[10px] font-medium text-zinc-700 dark:text-zinc-200">
+                                {item.estado_publicacion ?? "Publicado"}
+                            </Text>
+                        </View>
+                        {item.estado_articulo && (
+                            <Text className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                                Estado: {item.estado_articulo}
+                            </Text>
+                        )}
+                    </View>
                 </View>
+
+                <Pressable
+                    onPress={() => setConfirmItem(item)}
+                    disabled={deletingId === item.id}
+                    className="ml-2 h-8 w-8 items-center justify-center rounded-full"
+                    style={{
+                        backgroundColor: isDark ? "#18181b" : "#e5e7eb",
+                        alignSelf: "flex-start",
+                        opacity: deletingId === item.id ? 0.6 : 1,
+                    }}
+                >
+                    {deletingId === item.id ? (
+                        <ActivityIndicator size="small" />
+                    ) : (
+                        <Feather name="trash-2" size={16} color="#dc2626" />
+                    )}
+                </Pressable>
             </View>
         </View>
     );
@@ -222,6 +306,161 @@ export default function MyItemsScreen() {
                     />
                 )}
             </View>
+
+            {/* Toast flotante */}
+            {toast && (
+                <View
+                    pointerEvents="box-none"
+                    style={{
+                        position: "absolute",
+                        top: Platform.OS === "ios" ? 60 : 40,
+                        left: 16,
+                        right: 16,
+                        zIndex: 999,
+                    }}
+                >
+                    <View
+                        style={{
+                            flexDirection: "row",
+                            alignItems: "flex-start",
+                            paddingHorizontal: 16,
+                            paddingVertical: 12,
+                            borderRadius: 18,
+                            backgroundColor:
+                                toast.type === "success" ? "#16a34a" : "#dc2626",
+                            shadowColor: "#000",
+                            shadowOpacity: 0.25,
+                            shadowRadius: 12,
+                            shadowOffset: { width: 0, height: 4 },
+                            elevation: 10,
+                        }}
+                    >
+                        <Feather
+                            name={
+                                toast.type === "success" ? "check-circle" : "alert-triangle"
+                            }
+                            size={18}
+                            color="#fff"
+                            style={{ marginTop: 2, marginRight: 8 }}
+                        />
+                        <View style={{ flex: 1 }}>
+                            <Text
+                                style={{
+                                    color: "#fff",
+                                    fontSize: 14,
+                                    fontWeight: "600",
+                                }}
+                            >
+                                {toast.title}
+                            </Text>
+                            {toast.message ? (
+                                <Text
+                                    style={{
+                                        color: "#fff",
+                                        fontSize: 12,
+                                        marginTop: 4,
+                                        opacity: 0.9,
+                                    }}
+                                >
+                                    {toast.message}
+                                </Text>
+                            ) : null}
+                        </View>
+                        <Pressable onPress={() => setToast(null)}>
+                            <Feather name="x" size={16} color="#fff" />
+                        </Pressable>
+                    </View>
+                </View>
+            )}
+
+            {/* 🔥 Modal de confirmación estilizado */}
+            {confirmItem && (
+                <View
+                    pointerEvents="box-none"
+                    style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        justifyContent: "center",
+                        alignItems: "center",
+                        backgroundColor: COLORS.overlay,
+                        paddingHorizontal: 24,
+                        zIndex: 1000,
+                    }}
+                >
+                    <View
+                        className="w-full rounded-2xl p-5"
+                        style={{
+                            backgroundColor: COLORS.card,
+                            shadowColor: "#000",
+                            shadowOpacity: 0.25,
+                            shadowRadius: 20,
+                            shadowOffset: { width: 0, height: 10 },
+                            elevation: 12,
+                        }}
+                    >
+                        <View className="mb-3 flex-row items-center">
+                            <View
+                                className="mr-3 h-10 w-10 items-center justify-center rounded-full"
+                                style={{
+                                    backgroundColor: isDark ? "#450a0a" : "#fee2e2",
+                                }}
+                            >
+                                <Feather name="trash-2" size={20} color="#dc2626" />
+                            </View>
+                            <Text className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+                                Eliminar artículo
+                            </Text>
+                        </View>
+
+                        <Text className="mb-4 text-sm text-zinc-600 dark:text-zinc-300">
+                            ¿Seguro que quieres eliminar{" "}
+                            <Text className="font-semibold">
+                                “{confirmItem.titulo}”
+                            </Text>
+                            ? Esta acción no se puede deshacer.
+                        </Text>
+
+                        <View className="flex-row justify-end gap-3 mt-2">
+                            <Pressable
+                                onPress={() => setConfirmItem(null)}
+                                className="px-4 py-2 rounded-xl"
+                                style={{
+                                    backgroundColor: isDark ? "#27272a" : "#e5e7eb",
+                                }}
+                            >
+                                <Text className="text-sm font-medium text-zinc-800 dark:text-zinc-100">
+                                    Cancelar
+                                </Text>
+                            </Pressable>
+
+                            <Pressable
+                                onPress={() => performDelete(confirmItem)}
+                                className="px-4 py-2 rounded-xl flex-row items-center"
+                                style={{
+                                    backgroundColor: "#dc2626",
+                                    opacity:
+                                        deletingId === confirmItem.id ? 0.7 : 1,
+                                }}
+                                disabled={deletingId === confirmItem.id}
+                            >
+                                {deletingId === confirmItem.id && (
+                                    <ActivityIndicator
+                                        size="small"
+                                        color="#fff"
+                                        style={{ marginRight: 6 }}
+                                    />
+                                )}
+                                <Text className="text-sm font-semibold text-white">
+                                    Eliminar
+                                </Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            )}
         </SafeAreaView>
     );
 }

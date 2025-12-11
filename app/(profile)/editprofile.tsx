@@ -1,10 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
   Image,
   Modal,
@@ -21,6 +22,7 @@ import { supabase } from "../../utils/supabase";
 
 /* ---------------- Tipos ---------------- */
 type SelectItem = { label: string; value: string };
+
 type SelectProps = {
   label?: string;
   value?: string;
@@ -28,19 +30,259 @@ type SelectProps = {
   items: SelectItem[];
   onChange?: (val: string) => void;
 };
+
 type FieldProps = {
   label?: string;
   placeholder?: string;
   value: string;
   onChangeText: (t: string) => void;
   keyboardType?:
-    | "default"
-    | "email-address"
-    | "numeric"
-    | "phone-pad"
-    | "number-pad"
-    | "decimal-pad";
+  | "default"
+  | "email-address"
+  | "numeric"
+  | "phone-pad"
+  | "number-pad"
+  | "decimal-pad";
 };
+
+type ToastState =
+  | {
+    type: "success" | "error";
+    title: string;
+    message?: string;
+  }
+  | null;
+
+type ToastProps = {
+  toast: ToastState;
+  onDismiss: () => void;
+};
+
+/* ---------------- Toast animado ---------------- */
+export function AnimatedToast({ toast, onDismiss }: ToastProps) {
+  const translateY = useRef(new Animated.Value(-100)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    if (toast) {
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 65,
+          friction: 8,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scale, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 80,
+          friction: 7,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(translateY, {
+          toValue: -100,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 0.9,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [toast, translateY, opacity, scale]);
+
+  if (!toast) return null;
+
+  const bgColor = toast.type === "success" ? "#10b981" : "#ef4444";
+  const icon = toast.type === "success" ? "check-circle" : "alert-circle";
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: "absolute",
+        top: Platform.OS === "ios" ? 60 : 40,
+        left: 16,
+        right: 16,
+        zIndex: 999,
+      }}
+    >
+      <Animated.View
+        style={{
+          transform: [{ translateY }, { scale }],
+          opacity,
+        }}
+      >
+        <Pressable
+          onPress={onDismiss}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            borderRadius: 16,
+            backgroundColor: bgColor,
+            shadowColor: "#000",
+            shadowOpacity: 0.3,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 12,
+          }}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Feather name={icon as any} size={20} color="#fff" />
+          </View>
+
+          <View style={{ flex: 1, marginHorizontal: 12 }}>
+            <Text
+              style={{
+                color: "#fff",
+                fontSize: 15,
+                fontWeight: "700",
+                letterSpacing: 0.2,
+              }}
+            >
+              {toast.title}
+            </Text>
+            {toast.message && (
+              <Text
+                style={{
+                  color: "#fff",
+                  fontSize: 13,
+                  marginTop: 2,
+                  opacity: 0.95,
+                  lineHeight: 18,
+                }}
+              >
+                {toast.message}
+              </Text>
+            )}
+          </View>
+
+          <Pressable
+            onPress={onDismiss}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Feather name="x" size={16} color="#fff" />
+          </Pressable>
+
+          <View
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 3,
+              borderBottomLeftRadius: 16,
+              borderBottomRightRadius: 16,
+              backgroundColor: "rgba(255, 255, 255, 0.3)",
+              overflow: "hidden",
+            }}
+          >
+            <ProgressBar duration={3000} />
+          </View>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
+function ProgressBar({ duration }: { duration: number }) {
+  const width = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(width, {
+      toValue: 100,
+      duration,
+      useNativeDriver: false,
+    }).start();
+  }, [duration, width]);
+
+  const widthInterpolated = width.interpolate({
+    inputRange: [0, 100],
+    outputRange: ["0%", "100%"],
+  });
+
+  return (
+    <Animated.View
+      style={{
+        height: "100%",
+        backgroundColor: "rgba(255, 255, 255, 0.5)",
+        width: widthInterpolated,
+      }}
+    />
+  );
+}
+
+/* ---------------- Hook useToast ---------------- */
+export function useToast() {
+  const [toast, setToast] = React.useState<ToastState>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = React.useCallback(
+    (config: NonNullable<ToastState>, duration = 3000) => {
+      setToast(config);
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      timeoutRef.current = setTimeout(() => {
+        setToast(null);
+      }, duration);
+    },
+    []
+  );
+
+  const hideToast = React.useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    setToast(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return { toast, showToast, hideToast };
+}
 
 /* ---------------- Select con Modal ---------------- */
 function Select({
@@ -53,6 +295,7 @@ function Select({
   const [open, setOpen] = useState(false);
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
+
   const COLORS = useMemo(
     () => ({
       pill: isDark ? "#27272a" : "#f3f4f6",
@@ -101,7 +344,7 @@ function Select({
           style={{ color: value ? COLORS.text : COLORS.iconMuted }}
         >
           {value
-            ? (items.find((i) => i.value === value)?.label ?? value)
+            ? items.find((i) => i.value === value)?.label ?? value
             : placeholder}
         </Text>
         <Feather name="chevron-down" size={18} color={COLORS.iconMuted} />
@@ -182,6 +425,7 @@ function Field({
 }: FieldProps) {
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
+
   const COLORS = useMemo(
     () => ({
       ring: isDark ? "#3f3f46" : "#e5e7eb",
@@ -218,6 +462,34 @@ function Field({
   );
 }
 
+/* ---------------- Helper de error amigable ---------------- */
+function getFriendlySaveErrorMessage(err: any): string {
+  const raw = err?.message || "";
+  const msg = raw.toLowerCase();
+
+  if (!msg) {
+    return "Ocurrió un problema al guardar tu perfil. Intenta de nuevo en unos minutos.";
+  }
+
+  if (msg.includes("network") || msg.includes("fetch") || msg.includes("timeout")) {
+    return "Tuvimos un problema de conexión. Verifica tu internet e inténtalo de nuevo.";
+  }
+
+  if (msg.includes("jwt") || msg.includes("token")) {
+    return "Tu sesión ha expirado. Vuelve a iniciar sesión.";
+  }
+
+  if (msg.includes("permission denied") || msg.includes("rls")) {
+    return "No tienes permisos para realizar esta acción.";
+  }
+
+  if (msg.includes("duplicate key") || msg.includes("unique constraint")) {
+    return "Ya existe un registro con estos datos.";
+  }
+
+  return "No se pudo guardar tu perfil. Inténtalo más tarde.";
+}
+
 /* ---------------- Pantalla ---------------- */
 export default function ProfileEditScreen() {
   const router = useRouter();
@@ -238,8 +510,8 @@ export default function ProfileEditScreen() {
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const { toast, showToast, hideToast } = useToast();
 
-  // Estados del formulario
   const [fullname, setFullname] = useState("");
   const [curp, setCurp] = useState("");
   const [email, setEmail] = useState("");
@@ -249,16 +521,18 @@ export default function ProfileEditScreen() {
   const [town, setTown] = useState("");
   const [township, setTownship] = useState("");
   const [phone, setPhone] = useState("");
-  const [marital, setMarital] = useState("");
+  const [gender, setGender] = useState("");
 
-  // Fecha de nacimiento
   const now = new Date();
+
   const years = useMemo<SelectItem[]>(() => {
     const arr: SelectItem[] = [];
-    for (let y = now.getFullYear(); y >= now.getFullYear() - 100; y--)
+    for (let y = now.getFullYear(); y >= now.getFullYear() - 100; y--) {
       arr.push({ label: String(y), value: String(y) });
+    }
     return arr;
-  }, []);
+  }, [now]);
+
   const months = useMemo<SelectItem[]>(
     () =>
       [
@@ -274,9 +548,13 @@ export default function ProfileEditScreen() {
         "Oct",
         "Nov",
         "Dec",
-      ].map((m, i) => ({ label: m, value: String(i + 1).padStart(2, "0") })),
+      ].map((m, i) => ({
+        label: m,
+        value: String(i + 1).padStart(2, "0"),
+      })),
     []
   );
+
   const days = useMemo<SelectItem[]>(
     () =>
       Array.from({ length: 31 }, (_, i) => ({
@@ -285,23 +563,23 @@ export default function ProfileEditScreen() {
       })),
     []
   );
+
   const [dDay, setDDay] = useState("");
   const [dMonth, setDMonth] = useState("");
   const [dYear, setDYear] = useState("");
 
-  const maritalOptions: SelectItem[] = [
-    { label: "Soltero(a)", value: "single" },
-    { label: "Casado(a)", value: "married" },
-    { label: "Divorciado(a)", value: "divorced" },
-    { label: "Viudo(a)", value: "widowed" },
-    { label: "Unión libre", value: "cohabiting" },
+  const genderOptions: SelectItem[] = [
+    { label: "Masculino", value: "male" },
+    { label: "Femenino", value: "female" },
+    { label: "Otro", value: "other" },
   ];
 
   const onlyDigits = (s: string) => s.replace(/[^\d]/g, "");
 
-  /* ====== CARGA INICIAL DESDE SUPABASE (tabla 'perfiles') ====== */
+  /* --------- Cargar perfil --------- */
   useEffect(() => {
     let alive = true;
+
     async function load() {
       try {
         setLoading(true);
@@ -315,7 +593,7 @@ export default function ProfileEditScreen() {
         const { data, error } = await supabase
           .from("perfiles")
           .select(
-            "nombre, curp, estado_civil, email, fecha_nacimiento, direccion, avatar_url"
+            "nombre, curp, genero, email, fecha_nacimiento, direccion, telefono, avatar_url"
           )
           .eq("id", user.id)
           .maybeSingle();
@@ -327,7 +605,7 @@ export default function ProfileEditScreen() {
           setFullname((data as any).nombre ?? "");
           setCurp(((data as any).curp ?? "").toUpperCase());
           setEmail(((data as any).email ?? "").toLowerCase());
-          setMarital((data as any).estado_civil ?? "");
+          setGender((data as any).genero ?? "");
           setAvatarUri((data as any).avatar_url || null);
 
           const bd: string | null = (data as any).fecha_nacimiento ?? null;
@@ -344,25 +622,28 @@ export default function ProfileEditScreen() {
           setZip(dir.cp ?? "");
           setTown(dir.municipio ?? "");
           setTownship(dir.estado ?? "");
-          setPhone(dir.telefono ?? "");
+          setPhone((data as any).telefono ?? dir.telefono ?? "");
         }
       } catch (e: any) {
-        console.error(e);
+        if (__DEV__) {
+          console.log("Error al cargar perfil:", e);
+        }
         Alert.alert(
           "No se pudo cargar tu perfil",
-          e?.message ?? "Intenta de nuevo."
+          "Ocurrió un problema al cargar tu información. Intenta de nuevo."
         );
       } finally {
         if (alive) setLoading(false);
       }
     }
+
     load();
     return () => {
       alive = false;
     };
   }, [router]);
 
-  /* ====== PICKER AVATAR + UPLOAD ====== */
+  /* --------- Picker de imagen --------- */
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -379,12 +660,12 @@ export default function ProfileEditScreen() {
       selectionLimit: 1,
     });
     if (!result.canceled && result.assets.length > 0) {
-      setAvatarUri(result.assets[0].uri); // local URI; se sube al guardar
+      setAvatarUri(result.assets[0].uri);
     }
   };
 
+  /* --------- Subir avatar a Supabase --------- */
   const uploadAvatarToSupabase = async (userId: string, imageUri: string) => {
-    // si ya es una URL http(s) asumimos que ya está en storage
     if (/^https?:\/\//i.test(imageUri)) return imageUri;
 
     const res = await fetch(imageUri);
@@ -398,23 +679,38 @@ export default function ProfileEditScreen() {
       upsert: true,
       cacheControl: "3600",
     });
-    if (error) throw new Error(`Upload avatar: ${error.message}`);
+
+    if (error) {
+      throw new Error(`Upload avatar: ${error.message}`);
+    }
 
     const { data } = supabase.storage.from("profile").getPublicUrl(path);
     return data.publicUrl as string;
   };
 
-  /* ======================= GUARDAR EN SUPABASE ======================= */
+  /* --------- Guardar perfil --------- */
   async function onSave() {
     const errs: string[] = [];
-    if (!fullname.trim()) errs.push("Nombre completo");
+
+    if (!fullname.trim()) errs.push("Ingresa tu nombre completo");
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      errs.push("Email válido");
-    if (zip && zip.length < 4) errs.push("CP válido");
-    if (phone && onlyDigits(phone).length < 7) errs.push("Teléfono válido");
+      errs.push("Escribe un email válido (ej. correo@ejemplo.com)");
+    if (zip && zip.length < 4) errs.push("Revisa tu código postal");
+    if (phone && onlyDigits(phone).length < 7)
+      errs.push("Revisa tu número de teléfono");
 
     if (errs.length) {
-      Alert.alert("Revisa los campos", errs.join(", "));
+      const msg =
+        "Revisa estos campos:\n" + errs.map((e) => `• ${e}`).join("\n");
+
+      showToast(
+        {
+          type: "error",
+          title: "Información incompleta",
+          message: msg,
+        },
+        4000
+      );
       return;
     }
 
@@ -432,7 +728,6 @@ export default function ProfileEditScreen() {
     try {
       setSaving(true);
 
-      //Subir avatar
       let avatar_url: string | null = avatarUri || null;
       if (avatarUri && !/^https?:\/\//i.test(avatarUri)) {
         avatar_url = await uploadAvatarToSupabase(user.id, avatarUri);
@@ -442,7 +737,7 @@ export default function ProfileEditScreen() {
         id: user.id,
         nombre: fullname.trim(),
         curp: curp.trim().toUpperCase() || null,
-        estado_civil: marital || null,
+        genero: gender || null,
         email: email.trim().toLowerCase() || null,
         telefono: onlyDigits(phone) || null,
         fecha_nacimiento: birthdate,
@@ -466,16 +761,48 @@ export default function ProfileEditScreen() {
       if (error) throw error;
 
       if (avatar_url) setAvatarUri(avatar_url);
-      Alert.alert("Guardado", "Tu perfil se actualizó correctamente.");
-      router.back();
+
+      showToast(
+        {
+          type: "success",
+          title: "Perfil actualizado",
+          message: "Tu información se guardó correctamente.",
+        },
+        2000
+      );
+
+      setTimeout(() => {
+        router.back();
+      }, 2000);
     } catch (e: any) {
-      console.error(e);
-      Alert.alert("No se pudo guardar", e?.message ?? "Inténtalo más tarde.");
-    } finally {
+      // Solo log para ti, sin marcarlo como "error"
+      if (__DEV__) {
+        console.log("Error al guardar perfil:", e);
+      }
+
+      let userMessage =
+        "Ocurrió un problema al guardar tu perfil. Intenta de nuevo en unos minutos.";
+
+      if (e?.message?.includes("network")) {
+        userMessage =
+          "Tuvimos un problema de conexión. Verifica tu internet e inténtalo de nuevo.";
+      }
+
+      showToast(
+        {
+          type: "error",
+          title: "No se pudo guardar",
+          message: userMessage,
+        },
+        4000
+      );
+    }
+    finally {
       setSaving(false);
     }
   }
 
+  /* --------- Loading --------- */
   if (loading) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-white dark:bg-black">
@@ -487,6 +814,7 @@ export default function ProfileEditScreen() {
     );
   }
 
+  /* --------- UI principal --------- */
   return (
     <SafeAreaView className="flex-1 bg-white dark:bg-black">
       <ScrollView
@@ -497,7 +825,6 @@ export default function ProfileEditScreen() {
           paddingBottom: 140,
         }}
       >
-        {/* Header */}
         <View className="mb-4 flex-row items-center">
           <Pressable
             onPress={() => router.back()}
@@ -514,7 +841,6 @@ export default function ProfileEditScreen() {
           </Text>
         </View>
 
-        {/* Avatar */}
         <View className="items-center mb-6">
           <Pressable onPress={pickImage} className="relative">
             <Image
@@ -531,21 +857,13 @@ export default function ProfileEditScreen() {
           </Pressable>
         </View>
 
-        {/* Campos */}
         <Field
           label="Full name"
           placeholder="Nombre completo"
           value={fullname}
           onChangeText={setFullname}
         />
-        <Field
-          label="CURP"
-          placeholder="LOVA031223MMNMRLA1"
-          value={curp}
-          onChangeText={(t) => setCurp(t.toUpperCase())}
-        />
 
-        {/* Fecha de nacimiento */}
         <Text className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           Date of birth
         </Text>
@@ -577,11 +895,11 @@ export default function ProfileEditScreen() {
         </View>
 
         <Select
-          label="Marital status"
-          value={marital}
-          items={maritalOptions}
-          onChange={setMarital}
-          placeholder="Selecciona estado civil"
+          label="Gender"
+          value={gender}
+          items={genderOptions}
+          onChange={setGender}
+          placeholder="Selecciona tu género"
         />
 
         <Field
@@ -630,7 +948,6 @@ export default function ProfileEditScreen() {
           keyboardType="phone-pad"
         />
 
-        {/* Guardar */}
         <Pressable
           className="mt-2 h-12 items-center justify-center rounded-xl active:opacity-90"
           onPress={onSave}
@@ -651,6 +968,8 @@ export default function ProfileEditScreen() {
           <ActivityIndicator size="large" />
         </View>
       )}
+
+      <AnimatedToast toast={toast} onDismiss={hideToast} />
     </SafeAreaView>
   );
 }

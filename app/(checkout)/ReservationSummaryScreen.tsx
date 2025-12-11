@@ -1,4 +1,5 @@
 // app/(checkout)/summary.tsx
+
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -240,32 +241,16 @@ export default function ReservationSummaryScreen() {
     />
   );
 
- const handleConfirm = async () => {
-  if (!cartId) {
-    Alert.alert(
-      "Error",
-      "No se encontró la información del carrito. Intenta de nuevo."
-    );
-    return;
-  }
-
-  try {
-    setConfirming(true);
-
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError || !userData?.user) {
-      throw new Error("Debes iniciar sesión para confirmar la reservación.");
+  const handleConfirm = async () => {
+    if (!cartId) {
+      Alert.alert(
+        "Error",
+        "No se encontró la información del carrito. Intenta de nuevo."
+      );
+      return;
     }
-    const userAuthId = userData.user.id;
 
-    const { data: cartItems, error: itemsError } = await supabase
-      .from("cart_items")
-      .select(CART_ITEMS_SELECT)
-      .eq("id_carrito", cartId);
-
-    if (itemsError) throw itemsError;
-
-    if (!cartItems || cartItems.length === 0) {
+    if (!items.length) {
       Alert.alert(
         "Carrito vacío",
         "No hay artículos en el carrito para reservar."
@@ -273,84 +258,91 @@ export default function ReservationSummaryScreen() {
       return;
     }
 
-    const now = new Date();
+    try {
+      setConfirming(true);
 
-    const reservas = cartItems.map((it: any) => {
-      const unidad = (it.unidad ?? "dia") as UnidadPrecio;
-      const qty = it.qty ?? 1;
-      const periodQty = it.periodo_cantidad ?? 1;
-      const totalPeriods = qty * periodQty;
+      // Igual que en cart: tomamos el uid del usuario autenticado
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData.user) {
+        throw new Error("Debes iniciar sesión para confirmar la reservación.");
+      }
+      const userId = userData.user.id;
 
-      const fecha_inicio = now.toISOString();
-      const fecha_fin = addPeriods(now, unidad, totalPeriods).toISOString();
+      const now = new Date();
 
-      const precio_unitario = Number(it.precio);
-      const cantidad = totalPeriods;
-      const subtotalRow = precio_unitario * cantidad;
+      // Mismas reglas que en cart/index.tsx, pero usando CartItemRow
+      const reservas = items.map((it) => {
+        const unidad = (it.unidad ?? "dia") as UnidadPrecio;
+        const qty = it.qty ?? 1;
+        const periodQty = it.periodo_cantidad ?? 1;
+        const totalPeriods = qty * periodQty;
 
-      const tarifa_entrega = it.tarifa_entrega
-        ? Number(it.tarifa_entrega)
-        : 0;
-      const deposito_cobrado = 0;
-      const comision_plataforma = 0;
+        const fecha_inicio = now.toISOString();
+        const fecha_fin = addPeriods(now, unidad, totalPeriods).toISOString();
 
-      const totalRow =
-        subtotalRow +
-        tarifa_entrega +
-        deposito_cobrado +
-        comision_plataforma;
+        const precio_unitario = Number(it.precio);
+        const cantidad = totalPeriods;
+        const subtotalRow = precio_unitario * cantidad;
 
-      const entrega_solicitada =
-        !!it.entrega_disponible && !it.solo_retiro;
+        const tarifa_entrega = it.tarifa_entrega
+          ? Number(it.tarifa_entrega)
+          : 0;
+        const deposito_cobrado = 0;
+        const comision_plataforma = 0;
 
-      return {
-        id_usuario: userAuthId,
-        id_articulo: it.id_articulo,
-        fecha_inicio,
-        fecha_fin,
-        precio_unitario,
-        unidad_precio: unidad,
-        cantidad,
-        entrega_solicitada,
-        tarifa_entrega,
-        deposito_cobrado,
-        subtotal: subtotalRow,
-        comision_plataforma,
-        total: totalRow,
-        estado_reservacion: "pendiente",
-        notas: message || null,
-      };
-    });
+        const totalRow =
+          subtotalRow + tarifa_entrega + deposito_cobrado + comision_plataforma;
 
-    const { error: insertError } = await supabase
-      .from("reservaciones")
-      .insert(reservas);
+        const entrega_solicitada =
+          !!it.entrega_disponible && !it.solo_retiro;
 
-    if (insertError) throw insertError;
+        return {
+          id_usuario: userId,
+          id_articulo: it.id_articulo,
+          fecha_inicio,
+          fecha_fin,
+          precio_unitario,
+          unidad_precio: unidad,
+          cantidad,
+          entrega_solicitada,
+          tarifa_entrega,
+          deposito_cobrado,
+          subtotal: subtotalRow,
+          comision_plataforma,
+          total: totalRow,
+          estado_reservacion: "pendiente",
+          notas: message || null,
+        };
+      });
 
-    await supabase
-      .from("carts")
-      .update({ status: "ordered" })
-      .eq("id", cartId);
+      const { error: insertError } = await supabase
+        .from("reservaciones")
+        .insert(reservas);
 
-    await supabase
-      .from("cart_items")
-      .delete()
-      .eq("id_carrito", cartId);
+      if (insertError) throw insertError;
 
-    Alert.alert("Reservación creada", "Tus artículos han sido reservados.");
+      // Igual que en cart: marcar carrito como ordered y limpiar items
+      await supabase
+        .from("carts")
+        .update({ status: "ordered" })
+        .eq("id", cartId);
 
-    router.replace("/tickets");
-  } catch (e: any) {
-    Alert.alert(
-      "Error",
-      e?.message ?? "No se pudo confirmar la reservación."
-    );
-  } finally {
-    setConfirming(false);
-  }
-};
+      await supabase
+        .from("cart_items")
+        .delete()
+        .eq("id_carrito", cartId);
 
+      Alert.alert("Reservación creada", "Tus artículos han sido reservados.");
+      router.replace("/main");
+    } catch (e: any) {
+      Alert.alert(
+        "Error",
+        e?.message ?? "No se pudo confirmar la reservación."
+      );
+    } finally {
+      setConfirming(false);
+    }
+  };
 
 
   return (
