@@ -162,6 +162,14 @@ export default function MyItemsScreen() {
         [showToast]
     );
 
+        const handleEdit = (item: Articulo) => {
+        router.push({
+            pathname: "/settings/edit-item",
+            params: { id: String(item.id) },
+        });
+    };
+
+
     const renderItem = ({ item }: { item: Articulo }) => (
         <View
             className="mb-3 flex-row rounded-2xl border bg-white dark:bg-zinc-900"
@@ -225,22 +233,41 @@ export default function MyItemsScreen() {
                     </View>
                 </View>
 
-                <Pressable
-                    onPress={() => setConfirmItem(item)}
-                    disabled={deletingId === item.id}
-                    className="ml-2 h-8 w-8 items-center justify-center rounded-full"
+                {/* Botones Editar / Eliminar */}
+                <View
                     style={{
-                        backgroundColor: isDark ? "#18181b" : "#e5e7eb",
-                        alignSelf: "flex-start",
-                        opacity: deletingId === item.id ? 0.6 : 1,
+                        justifyContent: "space-between",
+                        alignItems: "flex-end",
                     }}
                 >
-                    {deletingId === item.id ? (
-                        <ActivityIndicator size="small" />
-                    ) : (
-                        <Feather name="trash-2" size={16} color="#dc2626" />
-                    )}
-                </Pressable>
+                    {/* Editar */}
+                    <Pressable
+                        onPress={() => handleEdit(item)}
+                        className="mb-2 h-8 w-8 items-center justify-center rounded-full"
+                        style={{
+                            backgroundColor: isDark ? "#111827" : "#e5e7eb",
+                        }}
+                    >
+                        <Feather name="edit-2" size={16} color={COLORS.icon} />
+                    </Pressable>
+
+                    {/* Eliminar */}
+                    <Pressable
+                        onPress={() => setConfirmItem(item)}
+                        disabled={deletingId === item.id}
+                        className="h-8 w-8 items-center justify-center rounded-full"
+                        style={{
+                            backgroundColor: isDark ? "#18181b" : "#fee2e2",
+                            opacity: deletingId === item.id ? 0.6 : 1,
+                        }}
+                    >
+                        {deletingId === item.id ? (
+                            <ActivityIndicator size="small" />
+                        ) : (
+                            <Feather name="trash-2" size={16} color="#dc2626" />
+                        )}
+                    </Pressable>
+                </View>
             </View>
         </View>
     );
