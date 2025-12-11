@@ -44,7 +44,7 @@ export default function AuthScreen() {
             ].join(" ")}
           >
             <AuthCard
-              title="Ledgerly"
+              title="Rent-It"
               subtitle="Success starts with financial sense, because every number leads to progress, and every progress leads to goals."
             >
               <View className="gap-4">

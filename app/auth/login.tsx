@@ -1,16 +1,18 @@
 // app/auth/login.tsx
 import { AntDesign, Feather } from "@expo/vector-icons";
-import type { Provider } from "@supabase/supabase-js";
+import type { Provider, User } from "@supabase/supabase-js";
+import { makeRedirectUri } from "expo-auth-session";
+import * as QueryParams from "expo-auth-session/build/QueryParams";
 import { BlurView } from "expo-blur";
 import Checkbox from "expo-checkbox";
 import { Link, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
+import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -31,6 +33,26 @@ import {
 } from "../../components";
 import "../../global.css";
 import { supabase } from "../../utils/supabase";
+
+WebBrowser.maybeCompleteAuthSession();
+
+const redirectTo = makeRedirectUri();
+
+const createSessionFromUrl = async (url: string) => {
+  const { params, errorCode } = QueryParams.getQueryParams(url);
+  if (errorCode) throw new Error(errorCode);
+
+  const { access_token, refresh_token } = params;
+
+  if (!access_token || !refresh_token) return;
+
+  const { error } = await supabase.auth.setSession({
+    access_token,
+    refresh_token,
+  });
+
+  if (error) throw error;
+};
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -62,6 +84,7 @@ export default function LoginScreen() {
   const handledSessionRef = useRef(false);
 
   const spinAnim = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     Animated.loop(
       Animated.timing(spinAnim, {
@@ -71,14 +94,20 @@ export default function LoginScreen() {
       })
     ).start();
   }, [spinAnim]);
+
   const spin = spinAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ["0deg", "360deg"],
   });
 
-  const routeAfterLogin = async (userId: string) => {
+  const routeAfterLogin = async (user: User) => {
     if (handledSessionRef.current) return;
     handledSessionRef.current = true;
+
+    const userId = user.id;
+    const userEmail = user.email;
+
+    console.log("Auth user:", userId, userEmail);
 
     try {
       const { data: perfil, error: perfilError } = await supabase
@@ -120,7 +149,7 @@ export default function LoginScreen() {
       .getSession()
       .then(({ data: { session } }) => {
         if (session?.user) {
-          routeAfterLogin(session.user.id);
+          routeAfterLogin(session.user);
         } else {
           setSessionLoading(false);
         }
@@ -133,7 +162,7 @@ export default function LoginScreen() {
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (session?.user) {
-          routeAfterLogin(session.user.id);
+          routeAfterLogin(session.user);
         } else {
           setSessionLoading(false);
         }
@@ -162,12 +191,37 @@ export default function LoginScreen() {
   }, []);
 
   const handleOAuth = async (provider: Provider) => {
-    const { data, error } = await supabase.auth.signInWithOAuth({ provider });
-    if (error) {
-      Alert.alert(`${provider} Sign-In error`, error.message);
-      return;
+    try {
+      setLoading(true);
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (error) {
+        Alert.alert(`${provider} Sign-In error`, error.message);
+        return;
+      }
+
+      if (!data?.url) return;
+
+      const res = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        redirectTo
+      );
+
+      if (res.type === "success" && res.url) {
+        await createSessionFromUrl(res.url);
+      }
+    } catch (e: any) {
+      Alert.alert("OAuth error", e?.message ?? String(e));
+    } finally {
+      setLoading(false);
     }
-    if (data?.url) await Linking.openURL(data.url);
   };
 
   async function onLogin() {
@@ -458,4 +512,3 @@ export default function LoginScreen() {
     </SafeAreaView>
   );
 }
-
