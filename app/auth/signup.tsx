@@ -1,8 +1,10 @@
 // app/auth/signup.tsx
 import { AntDesign, Feather } from "@expo/vector-icons";
 import type { Provider } from "@supabase/supabase-js";
-import * as Linking from "expo-linking";
+import { makeRedirectUri } from "expo-auth-session";
+import * as QueryParams from "expo-auth-session/build/QueryParams";
 import { useRouter } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import React, { useMemo, useState } from "react";
 import {
   Alert,
@@ -28,12 +30,31 @@ import {
 import "../../global.css";
 import { supabase } from "../../utils/supabase";
 
+WebBrowser.maybeCompleteAuthSession();
+
+const redirectTo = makeRedirectUri();
+
+const createSessionFromUrl = async (url: string) => {
+  const { params, errorCode } = QueryParams.getQueryParams(url);
+  if (errorCode) throw new Error(errorCode);
+
+  const { access_token, refresh_token } = params;
+
+  if (!access_token || !refresh_token) return;
+
+  const { error } = await supabase.auth.setSession({
+    access_token,
+    refresh_token,
+  });
+
+  if (error) throw error;
+};
+
 export default function SignupScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const showHero = width >= 768; // md+
+  const showHero = width >= 768;
 
-  // form
   const [email, setEmail] = useState<string>("");
   const [pw, setPw] = useState<string>("");
   const [pw2, setPw2] = useState<string>("");
@@ -42,10 +63,8 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState<boolean>(false);
   const [submitted, setSubmitted] = useState<boolean>(false);
 
-  // modal verificación
   const [showVerifyModal, setShowVerifyModal] = useState(false);
 
-  // validations
   const hasMinLen = pw.length >= 8;
   const hasUpper = /[A-Z]/.test(pw);
   const hasSymbol = /\W/.test(pw);
@@ -79,17 +98,26 @@ export default function SignupScreen() {
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
-        // si más adelante quieres deep linking, aquí va options.redirectTo
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
       });
 
       if (error) {
-        console.log("OAuth error:", error);
         Alert.alert("Error al iniciar con " + provider, error.message);
         return;
       }
 
-      if (data?.url) {
-        await Linking.openURL(data.url);
+      if (!data?.url) return;
+
+      const res = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        redirectTo
+      );
+
+      if (res.type === "success" && res.url) {
+        await createSessionFromUrl(res.url);
       }
     } catch (err: any) {
       console.error(err);
@@ -121,10 +149,8 @@ export default function SignupScreen() {
         return;
       }
 
-      // Pequeño delay por UX
       await new Promise((r) => setTimeout(r, 400));
 
-      // 🔔 Mostramos modal bonito de verificación
       setShowVerifyModal(true);
     } catch (err) {
       console.error(err);
@@ -169,7 +195,6 @@ export default function SignupScreen() {
                 title="Crea tu cuenta"
                 subtitle="Regístrate para empezar a organizar tus finanzas y convertir tus metas en hábitos."
               >
-                {/* Email */}
                 <View className="mb-4">
                   <Text className="mb-2 text-base font-medium text-zinc-700 dark:text-zinc-300">
                     Correo electrónico
@@ -207,7 +232,6 @@ export default function SignupScreen() {
                   )}
                 </View>
 
-                {/* Password */}
                 <View className="mb-3">
                   <Text className="mb-2 text-base font-medium text-zinc-700 dark:text-zinc-300">
                     Contraseña
@@ -239,20 +263,22 @@ export default function SignupScreen() {
                   </View>
                 </View>
 
-                {/* Requisitos (solo tras submit) */}
-                {/* Requisitos de contraseña (se muestran al escribir) */}
                 {(submitted || pw.length > 0) && (
                   <View className="mb-4 space-y-2">
                     {requirements.map(({ key, label, valid }) => (
-                      <View key={key} className="flex-row items-center" style={{ gap: 10 }}>
+                      <View
+                        key={key}
+                        className="flex-row items-center"
+                        style={{ gap: 10 }}
+                      >
                         <View
                           className={`h-5 w-5 rounded-full ${valid ? "bg-emerald-500" : "bg-red-500"
                             }`}
                         />
                         <Text
                           className={`text-sm ${valid
-                            ? "text-emerald-700 dark:text-emerald-400"
-                            : "text-red-700 dark:text-red-400"
+                              ? "text-emerald-700 dark:text-emerald-400"
+                              : "text-red-700 dark:text-red-400"
                             }`}
                         >
                           {label}
@@ -262,8 +288,6 @@ export default function SignupScreen() {
                   </View>
                 )}
 
-
-                {/* Confirm Password */}
                 <View className="mb-2">
                   <Text className="mb-2 text-base font-medium text-zinc-700 dark:text-zinc-300">
                     Repetir contraseña
@@ -308,7 +332,6 @@ export default function SignupScreen() {
                   )}
                 </View>
 
-                {/* Submit */}
                 <View className="mt-4">
                   <Button
                     onPress={onSubmit}
@@ -323,7 +346,6 @@ export default function SignupScreen() {
 
                 <Separator />
 
-                {/* OAuth */}
                 <View className="gap-3">
                   <OAuthButton
                     label="Continuar con Google"
@@ -337,7 +359,6 @@ export default function SignupScreen() {
                   />
                 </View>
 
-                {/* Legal / Link a Login */}
                 <View className="mt-6">
                   <Text className="text-center text-xs leading-5 text-zinc-500 dark:text-zinc-400">
                     By registering, you agree to the{" "}
@@ -367,7 +388,6 @@ export default function SignupScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Modal estilizado de verificación de correo */}
       <Modal
         visible={showVerifyModal}
         transparent
