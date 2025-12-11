@@ -566,7 +566,9 @@ function SavedCard({
             pill={C.pill}
             ring={C.ring}
             text={C.text}
-            leftIcon={<Feather name="shopping-cart" size={14} color={C.icon} />}
+            leftIcon={
+              <Feather name="shopping-cart" size={14} color={C.icon} />
+            }
           />
           <PillButton
             label="Eliminar"
@@ -766,135 +768,134 @@ export default function ShoppingCartScreen() {
     }
 
     setSaved((prev) => prev.filter((it) => it.id !== id));
+
+    showToast({
+      type: "success",
+      title: "Eliminado de guardados",
+      message: item
+        ? `"${item.title}" se eliminó de guardados.`
+        : "El artículo se eliminó de guardados.",
+    });
   };
 
-  showToast({
-    type: "success",
-    title: "Eliminado de guardados",
-    message: item
-      ? `"${item.title}" se eliminó de guardados.`
-      : "El artículo se eliminó de guardados.",
-  });
-};
+  const handleCheckout = () => {
+    if (!cart.length) {
+      showToast({
+        type: "error",
+        title: "Carrito vacío",
+        message: "Agrega artículos antes de pagar.",
+      });
+      return;
+    }
 
-const handleCheckout = () => {
-  if (!cart.length) {
-    showToast({
-      type: "error",
-      title: "Carrito vacío",
-      message: "Agrega artículos antes de pagar.",
+    if (!cartId || !perfilId) {
+      showToast({
+        type: "error",
+        title: "Error",
+        message:
+          "No se pudo obtener la información del carrito. Intenta de nuevo.",
+      });
+      return;
+    }
+
+    const firstArticle = cart[0];
+
+    router.push({
+      pathname: "/(checkout)/payment-method",
+      params: {
+        cartId,
+        userId: perfilId,
+        articleId: String(firstArticle.articleId),
+        articleIds: cart.map((it) => String(it.articleId)).join(","),
+      },
     });
-    return;
+  };
+
+  const subtotal = useMemo(
+    () => cart.reduce((acc, it) => acc + it.price * (it.qty ?? 1), 0),
+    [cart]
+  );
+
+  const subtotalFixed = Number.isFinite(subtotal)
+    ? subtotal.toFixed(2)
+    : "0.00";
+
+  if (loading) {
+    return (
+      <View className="flex-1 items-center justify-center">
+        <ActivityIndicator />
+        <Text style={{ marginTop: 8 }}>Cargando carrito…</Text>
+      </View>
+    );
   }
 
-  if (!cartId || !perfilId) {
-    showToast({
-      type: "error",
-      title: "Error",
-      message:
-        "No se pudo obtener la información del carrito. Intenta de nuevo.",
-    });
-    return;
-  }
-
-  const firstArticle = cart[0];
-
-  router.push({
-    pathname: "/(checkout)/payment-method",
-    params: {
-      cartId,
-      userId: perfilId,
-      articleId: String(firstArticle.articleId),
-      articleIds: cart.map((it) => String(it.articleId)).join(","),
-    },
-  });
-};
-
-const subtotal = useMemo(
-  () => cart.reduce((acc, it) => acc + it.price * (it.qty ?? 1), 0),
-  [cart]
-);
-
-const subtotalFixed = Number.isFinite(subtotal)
-  ? subtotal.toFixed(2)
-  : "0.00";
-
-if (loading) {
   return (
-    <View className="flex-1 items-center justify-center">
-      <ActivityIndicator />
-      <Text style={{ marginTop: 8 }}>Cargando carrito…</Text>
+    <View className="flex-1 mt-10" style={{ backgroundColor: C.bg }}>
+      <AnimatedToast toast={toast} onDismiss={hideToast} />
+
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+        <Text
+          className="text-3xl font-extrabold mb-4"
+          style={{ color: C.text }}
+        >
+          Carrito de compras
+        </Text>
+
+        {cart.map((it) => (
+          <CartCard
+            key={it.id}
+            item={it}
+            onQty={(q) => setQty(it.id, q)}
+            onSaveForLater={() => saveForLater(it)}
+            onSimilar={() => { }}
+            onDelete={() => removeFromCart(it.id)}
+          />
+        ))}
+
+        <View
+          className="mt-2 mb-8 rounded-2xl px-4 py-3 border"
+          style={{ borderColor: C.ring, backgroundColor: C.card }}
+        >
+          <View className="flex-row items-center justify-between">
+            <Text className="text-base" style={{ color: C.text }}>
+              Subtotal
+            </Text>
+            <Text className="text-lg font-bold" style={{ color: C.text }}>
+              ${subtotalFixed}
+            </Text>
+          </View>
+          <Pressable
+            className="mt-3 h-11 rounded-xl items-center justify-center"
+            style={{ backgroundColor: "#111827" }}
+            onPress={handleCheckout}
+            disabled={!cart.length}
+          >
+            <Text className="text-white font-semibold">Proceder al pago</Text>
+          </Pressable>
+        </View>
+
+        <Text
+          className="text-2xl font-extrabold mb-3"
+          style={{ color: C.text }}
+        >
+          Guardados para más tarde
+        </Text>
+
+        {saved.map((it) => (
+          <SavedCard
+            key={it.id}
+            item={it}
+            onMoveToCart={() => moveToCart(it)}
+            onDelete={() => removeFromSaved(it.id)}
+          />
+        ))}
+
+        {saved.length === 0 && (
+          <Text className="text-sm" style={{ color: C.subtext }}>
+            No tienes artículos guardados para más tarde.
+          </Text>
+        )}
+      </ScrollView>
     </View>
   );
-}
-
-return (
-  <View className="flex-1 mt-10" style={{ backgroundColor: C.bg }}>
-    <AnimatedToast toast={toast} onDismiss={hideToast} />
-
-    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
-      <Text
-        className="text-3xl font-extrabold mb-4"
-        style={{ color: C.text }}
-      >
-        Carrito de compras
-      </Text>
-
-      {cart.map((it) => (
-        <CartCard
-          key={it.id}
-          item={it}
-          onQty={(q) => setQty(it.id, q)}
-          onSaveForLater={() => saveForLater(it)}
-          onSimilar={() => { }}
-          onDelete={() => removeFromCart(it.id)}
-        />
-      ))}
-
-      <View
-        className="mt-2 mb-8 rounded-2xl px-4 py-3 border"
-        style={{ borderColor: C.ring, backgroundColor: C.card }}
-      >
-        <View className="flex-row items-center justify-between">
-          <Text className="text-base" style={{ color: C.text }}>
-            Subtotal
-          </Text>
-          <Text className="text-lg font-bold" style={{ color: C.text }}>
-            ${subtotalFixed}
-          </Text>
-        </View>
-        <Pressable
-          className="mt-3 h-11 rounded-xl items-center justify-center"
-          style={{ backgroundColor: "#111827" }}
-          onPress={handleCheckout}
-          disabled={!cart.length}
-        >
-          <Text className="text-white font-semibold">Proceder al pago</Text>
-        </Pressable>
-      </View>
-
-      <Text
-        className="text-2xl font-extrabold mb-3"
-        style={{ color: C.text }}
-      >
-        Guardados para más tarde
-      </Text>
-
-      {saved.map((it) => (
-        <SavedCard
-          key={it.id}
-          item={it}
-          onMoveToCart={() => moveToCart(it)}
-          onDelete={() => removeFromSaved(it.id)}
-        />
-      ))}
-
-      {saved.length === 0 && (
-        <Text className="text-sm" style={{ color: C.subtext }}>
-          No tienes artículos guardados para más tarde.
-        </Text>
-      )}
-    </ScrollView>
-  </View>
-);
 }

@@ -1,4 +1,4 @@
-// app/(checkout)/summary.tsx
+// app/(checkout)/ReservationSummaryScreen.tsx
 
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
