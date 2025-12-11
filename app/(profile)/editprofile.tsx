@@ -22,6 +22,7 @@ import { supabase } from "../../utils/supabase";
 
 /* ---------------- Tipos ---------------- */
 type SelectItem = { label: string; value: string };
+
 type SelectProps = {
   label?: string;
   value?: string;
@@ -29,26 +30,27 @@ type SelectProps = {
   items: SelectItem[];
   onChange?: (val: string) => void;
 };
+
 type FieldProps = {
   label?: string;
   placeholder?: string;
   value: string;
   onChangeText: (t: string) => void;
   keyboardType?:
-    | "default"
-    | "email-address"
-    | "numeric"
-    | "phone-pad"
-    | "number-pad"
-    | "decimal-pad";
+  | "default"
+  | "email-address"
+  | "numeric"
+  | "phone-pad"
+  | "number-pad"
+  | "decimal-pad";
 };
 
 type ToastState =
   | {
-      type: "success" | "error";
-      title: string;
-      message?: string;
-    }
+    type: "success" | "error";
+    title: string;
+    message?: string;
+  }
   | null;
 
 type ToastProps = {
@@ -56,6 +58,7 @@ type ToastProps = {
   onDismiss: () => void;
 };
 
+/* ---------------- Toast animado ---------------- */
 export function AnimatedToast({ toast, onDismiss }: ToastProps) {
   const translateY = useRef(new Animated.Value(-100)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -243,6 +246,7 @@ function ProgressBar({ duration }: { duration: number }) {
   );
 }
 
+/* ---------------- Hook useToast ---------------- */
 export function useToast() {
   const [toast, setToast] = React.useState<ToastState>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -291,6 +295,7 @@ function Select({
   const [open, setOpen] = useState(false);
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
+
   const COLORS = useMemo(
     () => ({
       pill: isDark ? "#27272a" : "#f3f4f6",
@@ -339,7 +344,7 @@ function Select({
           style={{ color: value ? COLORS.text : COLORS.iconMuted }}
         >
           {value
-            ? (items.find((i) => i.value === value)?.label ?? value)
+            ? items.find((i) => i.value === value)?.label ?? value
             : placeholder}
         </Text>
         <Feather name="chevron-down" size={18} color={COLORS.iconMuted} />
@@ -420,6 +425,7 @@ function Field({
 }: FieldProps) {
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
+
   const COLORS = useMemo(
     () => ({
       ring: isDark ? "#3f3f46" : "#e5e7eb",
@@ -456,6 +462,34 @@ function Field({
   );
 }
 
+/* ---------------- Helper de error amigable ---------------- */
+function getFriendlySaveErrorMessage(err: any): string {
+  const raw = err?.message || "";
+  const msg = raw.toLowerCase();
+
+  if (!msg) {
+    return "Ocurrió un problema al guardar tu perfil. Intenta de nuevo en unos minutos.";
+  }
+
+  if (msg.includes("network") || msg.includes("fetch") || msg.includes("timeout")) {
+    return "Tuvimos un problema de conexión. Verifica tu internet e inténtalo de nuevo.";
+  }
+
+  if (msg.includes("jwt") || msg.includes("token")) {
+    return "Tu sesión ha expirado. Vuelve a iniciar sesión.";
+  }
+
+  if (msg.includes("permission denied") || msg.includes("rls")) {
+    return "No tienes permisos para realizar esta acción.";
+  }
+
+  if (msg.includes("duplicate key") || msg.includes("unique constraint")) {
+    return "Ya existe un registro con estos datos.";
+  }
+
+  return "No se pudo guardar tu perfil. Inténtalo más tarde.";
+}
+
 /* ---------------- Pantalla ---------------- */
 export default function ProfileEditScreen() {
   const router = useRouter();
@@ -487,15 +521,18 @@ export default function ProfileEditScreen() {
   const [town, setTown] = useState("");
   const [township, setTownship] = useState("");
   const [phone, setPhone] = useState("");
-  const [marital, setMarital] = useState("");
+  const [gender, setGender] = useState("");
 
   const now = new Date();
+
   const years = useMemo<SelectItem[]>(() => {
     const arr: SelectItem[] = [];
-    for (let y = now.getFullYear(); y >= now.getFullYear() - 100; y--)
+    for (let y = now.getFullYear(); y >= now.getFullYear() - 100; y--) {
       arr.push({ label: String(y), value: String(y) });
+    }
     return arr;
   }, [now]);
+
   const months = useMemo<SelectItem[]>(
     () =>
       [
@@ -511,9 +548,13 @@ export default function ProfileEditScreen() {
         "Oct",
         "Nov",
         "Dec",
-      ].map((m, i) => ({ label: m, value: String(i + 1).padStart(2, "0") })),
+      ].map((m, i) => ({
+        label: m,
+        value: String(i + 1).padStart(2, "0"),
+      })),
     []
   );
+
   const days = useMemo<SelectItem[]>(
     () =>
       Array.from({ length: 31 }, (_, i) => ({
@@ -522,22 +563,23 @@ export default function ProfileEditScreen() {
       })),
     []
   );
+
   const [dDay, setDDay] = useState("");
   const [dMonth, setDMonth] = useState("");
   const [dYear, setDYear] = useState("");
 
-  const maritalOptions: SelectItem[] = [
-    { label: "Soltero(a)", value: "single" },
-    { label: "Casado(a)", value: "married" },
-    { label: "Divorciado(a)", value: "divorced" },
-    { label: "Viudo(a)", value: "widowed" },
-    { label: "Unión libre", value: "cohabiting" },
+  const genderOptions: SelectItem[] = [
+    { label: "Masculino", value: "male" },
+    { label: "Femenino", value: "female" },
+    { label: "Otro", value: "other" },
   ];
 
   const onlyDigits = (s: string) => s.replace(/[^\d]/g, "");
 
+  /* --------- Cargar perfil --------- */
   useEffect(() => {
     let alive = true;
+
     async function load() {
       try {
         setLoading(true);
@@ -551,7 +593,7 @@ export default function ProfileEditScreen() {
         const { data, error } = await supabase
           .from("perfiles")
           .select(
-            "nombre, curp, estado_civil, email, fecha_nacimiento, direccion, avatar_url"
+            "nombre, curp, genero, email, fecha_nacimiento, direccion, telefono, avatar_url"
           )
           .eq("id", user.id)
           .maybeSingle();
@@ -563,7 +605,7 @@ export default function ProfileEditScreen() {
           setFullname((data as any).nombre ?? "");
           setCurp(((data as any).curp ?? "").toUpperCase());
           setEmail(((data as any).email ?? "").toLowerCase());
-          setMarital((data as any).estado_civil ?? "");
+          setGender((data as any).genero ?? "");
           setAvatarUri((data as any).avatar_url || null);
 
           const bd: string | null = (data as any).fecha_nacimiento ?? null;
@@ -580,24 +622,28 @@ export default function ProfileEditScreen() {
           setZip(dir.cp ?? "");
           setTown(dir.municipio ?? "");
           setTownship(dir.estado ?? "");
-          setPhone(dir.telefono ?? "");
+          setPhone((data as any).telefono ?? dir.telefono ?? "");
         }
       } catch (e: any) {
-        console.error(e);
+        if (__DEV__) {
+          console.log("Error al cargar perfil:", e);
+        }
         Alert.alert(
           "No se pudo cargar tu perfil",
-          e?.message ?? "Intenta de nuevo."
+          "Ocurrió un problema al cargar tu información. Intenta de nuevo."
         );
       } finally {
         if (alive) setLoading(false);
       }
     }
+
     load();
     return () => {
       alive = false;
     };
   }, [router]);
 
+  /* --------- Picker de imagen --------- */
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -618,6 +664,7 @@ export default function ProfileEditScreen() {
     }
   };
 
+  /* --------- Subir avatar a Supabase --------- */
   const uploadAvatarToSupabase = async (userId: string, imageUri: string) => {
     if (/^https?:\/\//i.test(imageUri)) return imageUri;
 
@@ -632,22 +679,38 @@ export default function ProfileEditScreen() {
       upsert: true,
       cacheControl: "3600",
     });
-    if (error) throw new Error(`Upload avatar: ${error.message}`);
+
+    if (error) {
+      throw new Error(`Upload avatar: ${error.message}`);
+    }
 
     const { data } = supabase.storage.from("profile").getPublicUrl(path);
     return data.publicUrl as string;
   };
 
+  /* --------- Guardar perfil --------- */
   async function onSave() {
     const errs: string[] = [];
-    if (!fullname.trim()) errs.push("Nombre completo");
+
+    if (!fullname.trim()) errs.push("Ingresa tu nombre completo");
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      errs.push("Email válido");
-    if (zip && zip.length < 4) errs.push("CP válido");
-    if (phone && onlyDigits(phone).length < 7) errs.push("Teléfono válido");
+      errs.push("Escribe un email válido (ej. correo@ejemplo.com)");
+    if (zip && zip.length < 4) errs.push("Revisa tu código postal");
+    if (phone && onlyDigits(phone).length < 7)
+      errs.push("Revisa tu número de teléfono");
 
     if (errs.length) {
-      Alert.alert("Revisa los campos", errs.join(", "));
+      const msg =
+        "Revisa estos campos:\n" + errs.map((e) => `• ${e}`).join("\n");
+
+      showToast(
+        {
+          type: "error",
+          title: "Información incompleta",
+          message: msg,
+        },
+        4000
+      );
       return;
     }
 
@@ -674,7 +737,7 @@ export default function ProfileEditScreen() {
         id: user.id,
         nombre: fullname.trim(),
         curp: curp.trim().toUpperCase() || null,
-        estado_civil: marital || null,
+        genero: gender || null,
         email: email.trim().toLowerCase() || null,
         telefono: onlyDigits(phone) || null,
         fecha_nacimiento: birthdate,
@@ -712,21 +775,34 @@ export default function ProfileEditScreen() {
         router.back();
       }, 2000);
     } catch (e: any) {
-      console.error(e);
+      // Solo log para ti, sin marcarlo como "error"
+      if (__DEV__) {
+        console.log("Error al guardar perfil:", e);
+      }
+
+      let userMessage =
+        "Ocurrió un problema al guardar tu perfil. Intenta de nuevo en unos minutos.";
+
+      if (e?.message?.includes("network")) {
+        userMessage =
+          "Tuvimos un problema de conexión. Verifica tu internet e inténtalo de nuevo.";
+      }
 
       showToast(
         {
           type: "error",
           title: "No se pudo guardar",
-          message: e?.message ?? "Inténtalo más tarde.",
+          message: userMessage,
         },
-        3000
+        4000
       );
-    } finally {
+    }
+    finally {
       setSaving(false);
     }
   }
 
+  /* --------- Loading --------- */
   if (loading) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-white dark:bg-black">
@@ -738,6 +814,7 @@ export default function ProfileEditScreen() {
     );
   }
 
+  /* --------- UI principal --------- */
   return (
     <SafeAreaView className="flex-1 bg-white dark:bg-black">
       <ScrollView
@@ -786,12 +863,6 @@ export default function ProfileEditScreen() {
           value={fullname}
           onChangeText={setFullname}
         />
-        <Field
-          label="CURP"
-          placeholder="LOVA031223MMNMRLA1"
-          value={curp}
-          onChangeText={(t) => setCurp(t.toUpperCase())}
-        />
 
         <Text className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           Date of birth
@@ -824,11 +895,11 @@ export default function ProfileEditScreen() {
         </View>
 
         <Select
-          label="Marital status"
-          value={marital}
-          items={maritalOptions}
-          onChange={setMarital}
-          placeholder="Selecciona estado civil"
+          label="Gender"
+          value={gender}
+          items={genderOptions}
+          onChange={setGender}
+          placeholder="Selecciona tu género"
         />
 
         <Field
