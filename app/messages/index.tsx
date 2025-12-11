@@ -225,27 +225,47 @@ export default function MessagesScreen() {
   const [active, setActive] = useState<CategoryKey>("all");
   const [loading, setLoading] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
 
+  // 1) obtener userId una vez
   useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        if (!cancelled) {
+          setUserId(data.user?.id ?? null);
+        }
+      } catch (e) {
+        console.error("Error obteniendo usuario actual", e);
+        if (!cancelled) setUserId(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 2) cargar conversaciones + suscripción realtime
+  useEffect(() => {
+    if (!userId) {
+      setConversations([]);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     const load = async () => {
       try {
         setLoading(true);
 
-        // usuario actual
-        const { data: userData } = await supabase.auth.getUser();
-        const myId = userData.user?.id;
-        if (!myId) {
-          if (!cancelled) setConversations([]);
-          return;
-        }
-
-        // todas los mensajes donde estoy involucrado
         const { data: msgs, error } = await supabase
           .from("messages")
           .select("*")
-          .or(`sender_id.eq.${myId},room_id.like.%${myId}%`)
+          .or(`sender_id.eq.${userId},room_id.like.%${userId}%`)
           .order("created_at", { ascending: false });
 
         if (error) {
@@ -272,7 +292,7 @@ export default function MessagesScreen() {
         for (const m of messages) {
           if (seenRooms.has(m.room_id)) continue;
           seenRooms.add(m.room_id);
-          const otherId = getOtherUserId(m.room_id, myId);
+          const otherId = getOtherUserId(m.room_id, userId);
           summaries.push({
             roomId: m.room_id,
             lastMessage: m,
@@ -321,8 +341,9 @@ export default function MessagesScreen() {
               hour: "2-digit",
               minute: "2-digit",
             }),
-            category: "guest", // placeholder por ahora
-            status: s.lastMessage.sender_id === myId ? "sent" : undefined,
+            category: "guest", // placeholder
+            status:
+              s.lastMessage.sender_id === userId ? "sent" : undefined,
             unread: false,
           };
         });
@@ -335,10 +356,38 @@ export default function MessagesScreen() {
 
     load();
 
+    // suscripción realtime a nuevos mensajes
+    const channel = supabase
+      .channel(`messages-overview:${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+        },
+        (payload) => {
+          const row = payload.new as DbMessage;
+
+          // solo recargar si el mensaje me involucra
+          if (
+            row.sender_id !== userId &&
+            !row.room_id.includes(userId)
+          ) {
+            return;
+          }
+
+          // recargar lista
+          load();
+        }
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
+      supabase.removeChannel(channel);
     };
-  }, []);
+  }, [userId]);
 
   const data =
     active === "all"

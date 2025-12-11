@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Image,
-  Keyboard,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   Text,
@@ -34,9 +34,11 @@ type ChatMessage = {
   from: "me" | "them";
   text?: string;
   time: string;
-  date: string;
+  dateKey: string;   // clave técnica (YYYY-MM-DD local)
+  dateLabel: string; // lo que mostramos: "Hoy", "Ayer", "11 dic"
   status?: ReadStatus;
 };
+
 
 type Profile = {
   id: string;
@@ -46,29 +48,6 @@ type Profile = {
 
 const AVATAR_FALLBACK =
   "https://ui-avatars.com/api/?background=111827&color=fff&name=R";
-
-function useKeyboardHeight() {
-  const [height, setHeight] = useState(0);
-
-  useEffect(() => {
-    const showEvt =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvt =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-
-    const onShow = (e: any) => setHeight(e.endCoordinates?.height ?? 0);
-    const onHide = () => setHeight(0);
-
-    const s1 = Keyboard.addListener(showEvt, onShow);
-    const s2 = Keyboard.addListener(hideEvt, onHide);
-    return () => {
-      s1.remove();
-      s2.remove();
-    };
-  }, []);
-
-  return height;
-}
 
 function useColors() {
   const isDark = useColorScheme() === "dark";
@@ -173,15 +152,25 @@ function Bubble({ m }: { m: ChatMessage }) {
 
 /** Helpers: DB -> UI **/
 
-function formatDateLabel(date: Date): string {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const diffMs = today.getTime() - d.getTime();
-  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+function getLocalDayIndex(d: Date): number {
+  // getTime() está en UTC. Restamos el offset para “mover” el momento a medianoche local.
+  const localMs = d.getTime() - d.getTimezoneOffset() * 60_000;
+  return Math.floor(localMs / 86_400_000); // 1000 * 60 * 60 * 24
+}
 
-  if (diffDays === 0) return "Hoy";
-  if (diffDays === 1) return "Ayer";
+// Clave interna para agrupar (usamos el índice numérico como string)
+function getDateKey(d: Date): string {
+  return String(getLocalDayIndex(d));
+}
+
+// Texto a mostrar: Hoy / Ayer / 11 dic
+function formatDateLabel(date: Date): string {
+  const today = new Date();
+  const todayIdx = getLocalDayIndex(today);
+  const msgIdx = getLocalDayIndex(date);
+
+  if (msgIdx === todayIdx) return "Hoy";
+  if (msgIdx === todayIdx - 1) return "Ayer";
 
   return date.toLocaleDateString("es-MX", {
     day: "2-digit",
@@ -189,8 +178,11 @@ function formatDateLabel(date: Date): string {
   });
 }
 
+
 function mapDbToChat(row: DbMessage, currentUserId: string | null): ChatMessage {
   const d = new Date(row.created_at);
+  const dateKey = getDateKey(d);
+
   return {
     id: row.id,
     from: row.sender_id === currentUserId ? "me" : "them",
@@ -199,10 +191,12 @@ function mapDbToChat(row: DbMessage, currentUserId: string | null): ChatMessage 
       hour: "2-digit",
       minute: "2-digit",
     }),
-    date: formatDateLabel(d),
+    dateKey,
+    dateLabel: formatDateLabel(d),
     status: row.sender_id === currentUserId ? "sent" : undefined,
   };
 }
+
 
 // extrae el otro usuario de un room_id tipo "uid1:uid2"
 function getOtherUserId(roomId: string, myId: string | null): string | null {
@@ -220,10 +214,9 @@ export default function ChatDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+
   const [value, setValue] = useState("");
-  const [composerH, setComposerH] = useState(52);
   const listRef = useRef<FlatList<ChatMessage>>(null);
-  const kb = useKeyboardHeight();
 
   const [rawMessages, setRawMessages] = useState<DbMessage[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
@@ -369,147 +362,151 @@ export default function ChatDetail() {
     }
   };
 
+  // cuando cambie la cantidad de mensajes, baja al final
   useEffect(() => {
-    if (kb > 0) {
-      const t = setTimeout(() => scrollToBottom(false), 50);
-      return () => clearTimeout(t);
-    }
-  }, [kb]);
+    scrollToBottom(false);
+  }, [messages.length]);
 
   const displayName = otherProfile?.nombre ?? "Chat";
   const avatarUri = otherProfile?.avatar_url ?? AVATAR_FALLBACK;
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: C.bg }}>
-      {/* Header */}
-      <View
-        className="px-3 py-2.5 flex-row items-center justify-between"
-        style={{ borderBottomWidth: 1, borderBottomColor: C.ring }}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={insets.top + 8}
       >
-        <View className="flex-row items-center">
-          <Pressable onPress={() => router.back()} className="pr-2">
-            <Feather name="chevron-left" size={26} color={C.icon} />
-          </Pressable>
-          <Image
-            source={{ uri: avatarUri }}
-            className="h-11 w-11 rounded-full mr-2"
-            style={{ backgroundColor: C.pill }}
-          />
-          <View>
-            <Text
-              className="text-base font-semibold"
-              style={{ color: C.text }}
-            >
-              {displayName}
-            </Text>
-            <Text className="text-xs mt-0.5" style={{ color: C.sub }}>
-              Mensajes privados
-            </Text>
-          </View>
-        </View>
-        <View className="flex-row items-center">
-          <Pressable
-            className="h-9 w-9 items-center justify-center rounded-full"
-            style={{ backgroundColor: C.pill }}
+        <View style={{ flex: 1 }}>
+          {/* Header */}
+          <View
+            className="px-3 py-2.5 flex-row items-center justify-between"
+            style={{ borderBottomWidth: 1, borderBottomColor: C.ring }}
           >
-            <Feather name="phone" size={18} color={C.icon} />
-          </Pressable>
-          <Pressable
-            className="h-9 w-9 items-center justify-center ml-2 rounded-full"
-            style={{ backgroundColor: C.pill }}
-          >
-            <Feather name="more-vertical" size={18} color={C.icon} />
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Lista de mensajes */}
-      <FlatList
-        ref={listRef}
-        data={listData}
-        keyExtractor={(i) => i.id}
-        renderItem={({ item, index }) => {
-          const prev = listData[index - 1];
-          const showDate = !prev || prev.date !== item.date;
-          return (
-            <View>
-              {showDate && <DateSeparator label={item.date} />}
-              <Bubble m={item} />
+            <View className="flex-row items-center">
+              <Pressable onPress={() => router.back()} className="pr-2">
+                <Feather name="chevron-left" size={26} color={C.icon} />
+              </Pressable>
+              <Image
+                source={{ uri: avatarUri }}
+                className="h-11 w-11 rounded-full mr-2"
+                style={{ backgroundColor: C.pill }}
+              />
+              <View>
+                <Text
+                  className="text-base font-semibold"
+                  style={{ color: C.text }}
+                >
+                  {displayName}
+                </Text>
+                <Text className="text-xs mt-0.5" style={{ color: C.sub }}>
+                  Mensajes privados
+                </Text>
+              </View>
             </View>
-          );
-        }}
-        inverted
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{
-          paddingTop: 8,
-          paddingBottom: composerH + insets.bottom + 8,
-        }}
-        onContentSizeChange={() => scrollToBottom(false)}
-        ListEmptyComponent={
-          <View className="items-center mt-4">
-            <Text style={{ color: C.sub, fontSize: 13 }}>
-              Aún no hay mensajes. Escribe el primero 👋
-            </Text>
+            <View className="flex-row items-center">
+              <Pressable
+                className="h-9 w-9 items-center justify-center rounded-full"
+                style={{ backgroundColor: C.pill }}
+              >
+                <Feather name="phone" size={18} color={C.icon} />
+              </Pressable>
+              <Pressable
+                className="h-9 w-9 items-center justify-center ml-2 rounded-full"
+                style={{ backgroundColor: C.pill }}
+              >
+                <Feather name="more-vertical" size={18} color={C.icon} />
+              </Pressable>
+            </View>
           </View>
-        }
-      />
 
-      {/* Composer */}
-      <View
-        onLayout={(e) => setComposerH(e.nativeEvent.layout.height)}
-        className="px-3 py-2 flex-row items-end"
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: kb > 0 ? kb : insets.bottom,
-          borderTopWidth: 1,
-          borderTopColor: C.ring,
-          backgroundColor: C.bg,
-        }}
-      >
-        <Pressable
-          className="h-11 w-11 items-center justify-center mr-2 rounded-full"
-          style={{ backgroundColor: C.pill }}
-        >
-          <Feather name="paperclip" size={18} color={C.iconMuted} />
-        </Pressable>
+          {/* Lista de mensajes */}
+          <FlatList
+            ref={listRef}
+            style={{ flex: 1 }}
+            data={listData}
+            keyExtractor={(i) => i.id}
+            renderItem={({ item, index }) => {
+              const prev = listData[index - 1];
+              const showDate = !prev || prev.dateKey !== item.dateKey;
 
-        <View
-          className="flex-1 rounded-2xl px-3 py-2"
-          style={{ backgroundColor: C.pill }}
-        >
-          <TextInput
-            placeholder="Escribe un mensaje..."
-            placeholderTextColor={C.sub}
-            value={value}
-            onChangeText={setValue}
-            multiline
-            onFocus={() => scrollToBottom(false)}
-            style={{
-              color: C.text,
-              maxHeight: 120,
-              fontSize: 15,
-              lineHeight: 20,
+              return (
+                <View>
+                  {showDate && <DateSeparator label={item.dateLabel} />}
+                  <Bubble m={item} />
+                </View>
+              );
             }}
-          />
-        </View>
 
-        <Pressable
-          onPress={onSend}
-          disabled={!value.trim() || !userId}
-          className="h-11 w-11 items-center justify-center ml-2 rounded-full"
-          style={{
-            backgroundColor: value.trim() && userId ? C.sendBtn : C.pill,
-          }}
-        >
-          <Feather
-            name="send"
-            size={18}
-            color={value.trim() && userId ? "#ffffff" : C.icon}
+            inverted
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{
+              paddingTop: 8,
+              paddingBottom: 8,
+            }}
+            ListEmptyComponent={
+              <View className="items-center mt-4">
+                <Text style={{ color: C.sub, fontSize: 13 }}>
+                  Aún no hay mensajes. Escribe el primero 👋
+                </Text>
+              </View>
+            }
           />
-        </Pressable>
-      </View>
+
+          {/* Composer */}
+          <View
+            className="px-3 py-2 flex-row items-end"
+            style={{
+              borderTopWidth: 1,
+              borderTopColor: C.ring,
+              backgroundColor: C.bg,
+              paddingBottom: Math.max(insets.bottom, 8),
+            }}
+          >
+            <Pressable
+              className="h-11 w-11 items-center justify-center mr-2 rounded-full"
+              style={{ backgroundColor: C.pill }}
+            >
+              <Feather name="paperclip" size={18} color={C.iconMuted} />
+            </Pressable>
+
+            <View
+              className="flex-1 rounded-2xl px-3 py-2"
+              style={{ backgroundColor: C.pill }}
+            >
+              <TextInput
+                placeholder="Escribe un mensaje..."
+                placeholderTextColor={C.sub}
+                value={value}
+                onChangeText={setValue}
+                multiline
+                onFocus={() => scrollToBottom(false)}
+                style={{
+                  color: C.text,
+                  maxHeight: 120,
+                  fontSize: 15,
+                  lineHeight: 20,
+                }}
+              />
+            </View>
+
+            <Pressable
+              onPress={onSend}
+              disabled={!value.trim() || !userId}
+              className="h-11 w-11 items-center justify-center ml-2 rounded-full"
+              style={{
+                backgroundColor: value.trim() && userId ? C.sendBtn : C.pill,
+              }}
+            >
+              <Feather
+                name="send"
+                size={18}
+                color={value.trim() && userId ? "#ffffff" : C.icon}
+              />
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
