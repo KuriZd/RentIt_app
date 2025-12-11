@@ -129,10 +129,21 @@ export default function HomeScreen() {
     });
   }
 
-  const allItems = useMemo<Item[]>(
-    () => [...today, ...popularHome, ...recommended],
-    [today, popularHome, recommended]
-  );
+  const allItems = useMemo<Item[]>(() => {
+    const map = new Map<string, Item>();
+
+    // metemos cada lista pero evitando repetidos por id
+    for (const list of [today, popularHome, recommended]) {
+      for (const it of list) {
+        if (!map.has(it.id)) {
+          map.set(it.id, it);
+        }
+      }
+    }
+
+    return Array.from(map.values());
+  }, [today, popularHome, recommended]);
+
 
   const filteredAll = useMemo(
     () => applyFilters(allItems, selectedCategory?.key, query),
