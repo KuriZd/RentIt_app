@@ -3,11 +3,12 @@ import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
-    Pressable,
-    StatusBar,
-    Text,
-    View,
-    useColorScheme,
+  Alert,
+  Pressable,
+  StatusBar,
+  Text,
+  View,
+  useColorScheme,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -15,8 +16,6 @@ type MethodKey = "card" | "paypal" | "cash";
 
 type Params = {
   cartId?: string;
-  userId?: string;
-  articleId?: string; // 👈 añadimos el id del artículo
 };
 
 export default function PaymentMethodScreen() {
@@ -25,7 +24,7 @@ export default function PaymentMethodScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
 
-  const { cartId, userId, articleId } = useLocalSearchParams<Params>(); // 👈 leemos articleId
+  const { cartId } = useLocalSearchParams<Params>();
 
   const COLORS = useMemo(
     () => ({
@@ -33,17 +32,24 @@ export default function PaymentMethodScreen() {
       icon: isDark ? "#e5e7eb" : "#111827",
       iconMuted: isDark ? "#a1a1aa" : "#6b7280",
       ring: isDark ? "#3f3f46" : "#e5e7eb",
-      overlay: "rgba(0,0,0,0.30)",
+      overlay: "rgba(0,0,0,0.3)",
     }),
     [isDark]
   );
 
-  const [selected, setSelected] = useState<MethodKey>("cash"); // efectivo por defecto
+  const [selected, setSelected] = useState<MethodKey>("cash");
 
   const bg = isDark ? "#020617" : "#ffffff";
   const pageBg = isDark ? "#020617" : "#f9fafb";
   const textColor = isDark ? "#e5e7eb" : "#111827";
   const muted = isDark ? "#9ca3af" : "#6b7280";
+
+  const paymentLabel =
+    selected === "cash"
+      ? "Efectivo"
+      : selected === "card"
+        ? "Tarjeta"
+        : "PayPal";
 
   const renderRadio = (active: boolean, disabled?: boolean) => (
     <View
@@ -152,7 +158,6 @@ export default function PaymentMethodScreen() {
     >
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
 
-      {/* Header */}
       <View
         style={{
           paddingHorizontal: 16,
@@ -173,7 +178,7 @@ export default function PaymentMethodScreen() {
             color: textColor,
           }}
         >
-          Add a payment method
+          Método de pago
         </Text>
 
         <Pressable onPress={() => router.back()}>
@@ -181,7 +186,6 @@ export default function PaymentMethodScreen() {
         </Pressable>
       </View>
 
-      {/* Card métodos */}
       <View
         style={{
           marginHorizontal: 16,
@@ -193,7 +197,6 @@ export default function PaymentMethodScreen() {
           overflow: "hidden",
         }}
       >
-        {/* Tarjeta (deshabilitada) */}
         <MethodRow
           label="Tarjeta de crédito o débito"
           description="VISA · AMEX · DISCOVER"
@@ -211,7 +214,6 @@ export default function PaymentMethodScreen() {
           }}
         />
 
-        {/* PayPal (deshabilitado) */}
         <MethodRow label="PayPal" icon="globe" disabled methodKey="paypal" />
 
         <View
@@ -223,7 +225,6 @@ export default function PaymentMethodScreen() {
           }}
         />
 
-        {/* Efectivo (único disponible) */}
         <MethodRow
           label="Efectivo"
           description="Paga al momento de recibir el producto"
@@ -232,7 +233,6 @@ export default function PaymentMethodScreen() {
         />
       </View>
 
-      {/* Mensaje informativo */}
       <Text
         style={{
           marginHorizontal: 24,
@@ -244,7 +244,6 @@ export default function PaymentMethodScreen() {
         Por el momento solo está disponible el pago en efectivo.
       </Text>
 
-      {/* Botón Next */}
       <View
         style={{
           marginTop: "auto",
@@ -254,14 +253,19 @@ export default function PaymentMethodScreen() {
       >
         <Pressable
           onPress={() => {
-            // Pasamos cartId, userId, articleId y el método seleccionado
+            if (!cartId) {
+              Alert.alert(
+                "Error",
+                "No se encontró la información del carrito. Intenta de nuevo."
+              );
+              return;
+            }
+
             router.push({
-              pathname: "/WriteToHost", 
+              pathname: "/WriteToHost",
               params: {
-                cartId: cartId ?? "",
-                userId: userId ?? "",
-                articleId: articleId ?? "", 
-                paymentMethod: "Efectivo", 
+                cartId: String(cartId),
+                paymentMethod: paymentLabel,
               },
             });
           }}

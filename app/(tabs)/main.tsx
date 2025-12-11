@@ -47,7 +47,7 @@ export default function HomeScreen() {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
     null
   );
-  const [query, setQuery] = useState<string>(""); // de momento no se actualiza, pero lo dejamos para cuando conectes la búsqueda
+  const [query, setQuery] = useState<string>(""); // ahora sí lo usamos
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -129,10 +129,10 @@ export default function HomeScreen() {
     });
   }
 
+  // 🔥 Unificamos items para la vista de "Resultados" sin duplicados
   const allItems = useMemo<Item[]>(() => {
     const map = new Map<string, Item>();
 
-    // metemos cada lista pero evitando repetidos por id
     for (const list of [today, popularHome, recommended]) {
       for (const it of list) {
         if (!map.has(it.id)) {
@@ -143,7 +143,6 @@ export default function HomeScreen() {
 
     return Array.from(map.values());
   }, [today, popularHome, recommended]);
-
 
   const filteredAll = useMemo(
     () => applyFilters(allItems, selectedCategory?.key, query),
@@ -167,9 +166,12 @@ export default function HomeScreen() {
   return (
     <View className="flex-1 bg-white dark:bg-black">
       <HeaderSearch
+        query={query}
+        onQueryChange={setQuery}
         onCategorySelected={(cat) => setSelectedCategory(cat)}
         onSearchPress={() => {
-          // cuando quieras, aquí puedes abrir una pantalla de búsqueda o algo similar
+          // si quieres hacer algo especial al dar enter, lo pones aquí
+          // por ahora, solo usamos el filtro en memoria con `query`
         }}
         onSellPress={() => {
           // aquí iría la navegación a la pantalla de publicar artículo

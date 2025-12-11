@@ -1,25 +1,21 @@
-// app/(checkout)/write-to-host.tsx
+// app/(checkout)/WriteToHost.tsx
 import { supabase } from "@/utils/supabase";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    Pressable,
-    Text,
-    TextInput,
-    View,
-    useColorScheme,
+  Alert,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+  useColorScheme,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type HostParams = {
-  hostName?: string;
-  since?: string;
   cartId?: string;
-  userId?: string; // (ya no lo usamos como host, ahora lo sacamos de articulos)
   paymentMethod?: string;
-  message?: string;
-  articleId?: string;
 };
 
 function buildRoomId(a: string, b: string) {
@@ -52,11 +48,6 @@ export default function WriteToHostScreen() {
 
   const params = useLocalSearchParams<HostParams>();
 
-  const articleId =
-    typeof params.articleId === "string" && params.articleId.length
-      ? params.articleId
-      : "";
-
   const cartId =
     typeof params.cartId === "string" && params.cartId.length
       ? params.cartId
@@ -67,35 +58,40 @@ export default function WriteToHostScreen() {
       ? params.paymentMethod
       : "Efectivo";
 
-  const initialHostNameParam =
-    typeof params.hostName === "string" && params.hostName.length
-      ? params.hostName
-      : "Silvia";
-
-  const hostSince =
-    typeof params.since === "string" && params.since.length
-      ? params.since
-      : "Landlord since 2019";
-
-  const initialMessage =
-    typeof params.message === "string" ? params.message : "";
-
-  const [message, setMessage] = useState(initialMessage);
-  const [hostName, setHostName] = useState(initialHostNameParam);
+  const [message, setMessage] = useState("");
+  const [hostName, setHostName] = useState("Silvia");
+  const [hostSince] = useState("Landlord since 2019");
   const [hostId, setHostId] = useState<string>("");
+  const [articleId, setArticleId] = useState<string>("");
 
-  // A partir del articleId buscamos el propietario y su nombre
   useEffect(() => {
     let cancelled = false;
 
-    const loadOwnerAndName = async () => {
-      if (!articleId) return;
+    const loadOwnerFromCart = async () => {
+      if (!cartId) return;
 
       try {
+        const { data: items, error: itemsErr } = await supabase
+          .from("cart_items")
+          .select("id_articulo")
+          .eq("id_carrito", cartId)
+          .limit(1);
+
+        if (itemsErr) {
+          console.error("Error cargando items del carrito", itemsErr);
+          return;
+        }
+
+        const firstItem = items?.[0] as { id_articulo?: string | number } | undefined;
+        if (!firstItem || !firstItem.id_articulo || cancelled) return;
+
+        const artId = String(firstItem.id_articulo);
+        setArticleId(artId);
+
         const { data: art, error: artErr } = await supabase
           .from("articulos")
           .select("id_propietario")
-          .eq("id", articleId)
+          .eq("id", artId)
           .maybeSingle();
 
         if (artErr) {
@@ -103,11 +99,10 @@ export default function WriteToHostScreen() {
           return;
         }
 
-        if (!art) return;
+        if (!art || cancelled) return;
 
         const propietarioId = String(
-          (art as { id_propietario: string | number | null }).id_propietario ??
-            ""
+          (art as { id_propietario: string | number | null }).id_propietario ?? ""
         );
 
         if (!propietarioId || cancelled) return;
@@ -127,18 +122,26 @@ export default function WriteToHostScreen() {
           }
         }
       } catch (e) {
-        console.error("Error cargando propietario", e);
+        console.error("Error cargando propietario desde carrito", e);
       }
     };
 
-    loadOwnerAndName();
+    loadOwnerFromCart();
 
     return () => {
       cancelled = true;
     };
-  }, [articleId]);
+  }, [cartId]);
 
   const handleNext = async () => {
+    if (!cartId) {
+      Alert.alert(
+        "Error",
+        "No se encontró la información del carrito. Intenta de nuevo."
+      );
+      return;
+    }
+
     const trimmed = message.trim();
 
     if (hostId && trimmed.length > 0) {
@@ -310,7 +313,7 @@ export default function WriteToHostScreen() {
               color: COLORS.icon,
             }}
           >
-            {hostName.charAt(0)}
+            {(hostName || "H").charAt(0)}
           </Text>
         </View>
 

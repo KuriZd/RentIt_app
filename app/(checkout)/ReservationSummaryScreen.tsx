@@ -1,16 +1,16 @@
-// app/(checkout)/summary.tsx
+// app/(checkout)/ReservationSummaryScreen.tsx
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Pressable,
-    ScrollView,
-    Text,
-    View,
-    useColorScheme,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  useColorScheme,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../utils/supabase";
@@ -19,12 +19,8 @@ type UnidadPrecio = "hora" | "dia" | "semana";
 
 type SummaryParams = {
   cartId?: string;
-  userId?: string;      // uid del renter (quien renta)
   paymentMethod?: string;
   message?: string;
-  hostName?: string;
-  since?: string;
-  articleId?: string;   // 👈 nuevo: para poder llegar al propietario
 };
 
 type CartItemRow = {
@@ -89,14 +85,6 @@ export default function ReservationSummaryScreen() {
   const cartId =
     typeof params.cartId === "string" && params.cartId.length
       ? params.cartId
-      : "";
-  const userId =
-    typeof params.userId === "string" && params.userId.length
-      ? params.userId
-      : "";
-  const articleId =
-    typeof params.articleId === "string" && params.articleId.length
-      ? params.articleId
       : "";
   const methodLabel =
     typeof params.paymentMethod === "string" && params.paymentMethod.length
@@ -241,108 +229,133 @@ export default function ReservationSummaryScreen() {
   );
 
   const handleConfirm = async () => {
-  if (!cartId) {
-    Alert.alert(
-      "Error",
-      "No se encontró la información del carrito. Intenta de nuevo."
-    );
-    return;
-  }
-
-  if (!items.length) {
-    Alert.alert(
-      "Carrito vacío",
-      "No hay artículos en el carrito para reservar."
-    );
-    return;
-  }
-
-  try {
-    setConfirming(true);
-
-    // Igual que en cart: tomamos el uid del usuario autenticado
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (userError || !userData.user) {
-      throw new Error("Debes iniciar sesión para confirmar la reservación.");
+    if (!cartId) {
+      Alert.alert(
+        "Error",
+        "No se encontró la información del carrito. Intenta de nuevo."
+      );
+      return;
     }
-    const userId = userData.user.id;
 
-    const now = new Date();
+    if (!items.length) {
+      Alert.alert(
+        "Carrito vacío",
+        "No hay artículos en el carrito para reservar."
+      );
+      return;
+    }
 
-    // Mismas reglas que en cart/index.tsx, pero usando CartItemRow
-    const reservas = items.map((it) => {
-      const unidad = (it.unidad ?? "dia") as UnidadPrecio;
-      const qty = it.qty ?? 1;
-      const periodQty = it.periodo_cantidad ?? 1;
-      const totalPeriods = qty * periodQty;
+    try {
+      setConfirming(true);
 
-      const fecha_inicio = now.toISOString();
-      const fecha_fin = addPeriods(now, unidad, totalPeriods).toISOString();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData.user) {
+        throw new Error("Debes iniciar sesión para confirmar la reservación.");
+      }
+      const userId = userData.user.id;
 
-      const precio_unitario = Number(it.precio);
-      const cantidad = totalPeriods;
-      const subtotalRow = precio_unitario * cantidad;
+      const now = new Date();
 
-      const tarifa_entrega = it.tarifa_entrega
-        ? Number(it.tarifa_entrega)
-        : 0;
-      const deposito_cobrado = 0;
-      const comision_plataforma = 0;
+      const reservas = items.map((it) => {
+        const unidad = (it.unidad ?? "dia") as UnidadPrecio;
+        const qty = it.qty ?? 1;
+        const periodQty = it.periodo_cantidad ?? 1;
+        const totalPeriods = qty * periodQty;
 
-      const totalRow =
-        subtotalRow + tarifa_entrega + deposito_cobrado + comision_plataforma;
+        const fecha_inicio = now.toISOString();
+        const fecha_fin = addPeriods(now, unidad, totalPeriods).toISOString();
 
-      const entrega_solicitada =
-        !!it.entrega_disponible && !it.solo_retiro;
+        const precio_unitario = Number(it.precio);
+        const cantidad = totalPeriods;
+        const subtotalRow = precio_unitario * cantidad;
 
-      return {
-        id_usuario: userId,
-        id_articulo: it.id_articulo,
-        fecha_inicio,
-        fecha_fin,
-        precio_unitario,
-        unidad_precio: unidad,
-        cantidad,
-        entrega_solicitada,
-        tarifa_entrega,
-        deposito_cobrado,
-        subtotal: subtotalRow,
-        comision_plataforma,
-        total: totalRow,
-        estado_reservacion: "pendiente",
-        notas: message || null,
-      };
-    });
+        const tarifa_entrega = it.tarifa_entrega
+          ? Number(it.tarifa_entrega)
+          : 0;
+        const deposito_cobrado = 0;
+        const comision_plataforma = 0;
 
-    const { error: insertError } = await supabase
-      .from("reservaciones")
-      .insert(reservas);
+        const totalRow =
+          subtotalRow + tarifa_entrega + deposito_cobrado + comision_plataforma;
 
-    if (insertError) throw insertError;
+        const entrega_solicitada =
+          !!it.entrega_disponible && !it.solo_retiro;
 
-    // Igual que en cart: marcar carrito como ordered y limpiar items
-    await supabase
-      .from("carts")
-      .update({ status: "ordered" })
-      .eq("id", cartId);
+        return {
+          id_usuario: userId,
+          id_articulo: it.id_articulo,
+          fecha_inicio,
+          fecha_fin,
+          precio_unitario,
+          unidad_precio: unidad,
+          cantidad,
+          entrega_solicitada,
+          tarifa_entrega,
+          deposito_cobrado,
+          subtotal: subtotalRow,
+          comision_plataforma,
+          total: totalRow,
+          estado_reservacion: "pendiente",
+          notas: message || null,
+        };
+      });
 
-    await supabase
-      .from("cart_items")
-      .delete()
-      .eq("id_carrito", cartId);
+      const { error: insertError } = await supabase
+        .from("reservaciones")
+        .insert(reservas);
 
-    Alert.alert("Reservación creada", "Tus artículos han sido reservados.");
-    router.replace("/main");
-  } catch (e: any) {
-    Alert.alert(
-      "Error",
-      e?.message ?? "No se pudo confirmar la reservación."
-    );
-  } finally {
-    setConfirming(false);
-  }
-};
+      if (insertError) throw insertError;
 
+      for (const it of items) {
+        const unidadesReservadas = it.qty ?? 1;
+
+        const { data: art, error: artErr } = await supabase
+          .from("articulos")
+          .select("cantidad_disponible")
+          .eq("id", it.id_articulo)
+          .maybeSingle();
+
+        if (artErr || !art) {
+          console.log("Error cargando articulo para stock", artErr);
+          continue;
+        }
+
+        const actual =
+          (art as { cantidad_disponible: number | null }).cantidad_disponible ??
+          0;
+        const nuevaCantidad = Math.max(0, actual - unidadesReservadas);
+
+        const { error: updErr } = await supabase
+          .from("articulos")
+          .update({ cantidad_disponible: nuevaCantidad })
+          .eq("id", it.id_articulo);
+
+        if (updErr) {
+          console.log("Error actualizando stock de articulo", updErr);
+        }
+      }
+
+      await supabase
+        .from("carts")
+        .update({ status: "ordered" })
+        .eq("id", cartId);
+
+      await supabase
+        .from("cart_items")
+        .delete()
+        .eq("id_carrito", cartId);
+
+      Alert.alert("Reservación creada", "Tus artículos han sido reservados.");
+      router.replace("/main");
+    } catch (e: any) {
+      Alert.alert(
+        "Error",
+        e?.message ?? "No se pudo confirmar la reservación."
+      );
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   return (
     <View
@@ -478,9 +491,10 @@ export default function ReservationSummaryScreen() {
                         color: muted,
                       }}
                     >
-                      {`${it.qty ?? 1} x $${Number(it.precio ?? 0).toFixed(
-                        2
-                      )} USD`}
+                      {(it.qty ?? 1) +
+                        " x $" +
+                        Number(it.precio ?? 0).toFixed(2) +
+                        " USD"}
                     </Text>
                   </View>
                 </View>
@@ -553,17 +567,12 @@ export default function ReservationSummaryScreen() {
           </View>
         </View>
 
-        {/* Payment method card */}
         <Pressable
           onPress={() =>
             router.push({
-              pathname: "/payment-method",
+              pathname: "/(checkout)/payment-method",
               params: {
                 cartId,
-                userId,
-                articleId,          // 👈 lo reenviamos
-                paymentMethod: methodLabel,
-                message,
               },
             })
           }
@@ -601,15 +610,12 @@ export default function ReservationSummaryScreen() {
           <Feather name="chevron-right" size={20} color={COLORS.icon} />
         </Pressable>
 
-        {/* Write to host card */}
         <Pressable
           onPress={() =>
             router.push({
-              pathname: "/WriteToHost", // 👈 coincide con write-to-host.tsx
+              pathname: "/(checkout)/WriteToHost",
               params: {
                 cartId,
-                userId,
-                articleId,          // 👈 también lo reenviamos
                 paymentMethod: methodLabel,
                 message,
               },

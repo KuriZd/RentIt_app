@@ -566,7 +566,9 @@ function SavedCard({
             pill={C.pill}
             ring={C.ring}
             text={C.text}
-            leftIcon={<Feather name="shopping-cart" size={14} color={C.icon} />}
+            leftIcon={
+              <Feather name="shopping-cart" size={14} color={C.icon} />
+            }
           />
           <PillButton
             label="Eliminar"

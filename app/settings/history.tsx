@@ -16,6 +16,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+type ArticleRel = {
+    titulo: string | null;
+    url_publica: string | null;
+};
+
 type ReservationRow = {
     id: number;
     id_usuario: string;
@@ -24,7 +29,7 @@ type ReservationRow = {
     fecha_fin: string | null;
     total: number | null;
     estado_reservacion: string | null;
-    articulos: { titulo: string | null; url_publica: string | null }[] | null;
+    articulos: ArticleRel[] | ArticleRel | null;
 };
 
 type UiReservation = {
@@ -57,7 +62,9 @@ function formatShortDate(iso: string | null) {
     return `${d.getDate()} de ${meses[d.getMonth()]}`;
 }
 
-function buildStatus(r: ReservationRow): {
+function buildStatus(
+    r: ReservationRow
+): {
     label: string;
     color: string;
     subtitle: string;
@@ -202,10 +209,16 @@ export default function RentalHistory() {
             const rows = data as ReservationRow[];
 
             const ui: UiReservation[] = rows.map((r) => {
-                const art = r.articulos && r.articulos.length > 0 ? r.articulos[0] : null;
+                let art: ArticleRel | null = null;
+
+                if (Array.isArray(r.articulos)) {
+                    art = r.articulos[0] ?? null;
+                } else if (r.articulos && typeof r.articulos === "object") {
+                    art = r.articulos as ArticleRel;
+                }
+
                 const titulo = art?.titulo || "Artículo rentado";
-                const imageUrl =
-                    art?.url_publica || "https://picsum.photos/seed/rentit-history/300/300";
+                const imageUrl = art?.url_publica || null;
 
                 const status = buildStatus(r);
 
@@ -261,10 +274,7 @@ export default function RentalHistory() {
             {loading ? (
                 <View className="flex-1 items-center justify-center">
                     <ActivityIndicator />
-                    <Text
-                        className="mt-3 text-sm"
-                        style={{ color: COLORS.subtext }}
-                    >
+                    <Text className="mt-3 text-sm" style={{ color: COLORS.subtext }}>
                         Cargando tus rentas…
                     </Text>
                 </View>
@@ -313,12 +323,27 @@ export default function RentalHistory() {
                                     })
                                 }
                             >
-                                <View className="mr-3 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-900">
-                                    <Image
-                                        source={{ uri: r.imageUrl || "" }}
-                                        className="w-16 h-16"
-                                        resizeMode="cover"
-                                    />
+                                <View
+                                    className="mr-3 rounded-xl overflow-hidden"
+                                    style={{
+                                        backgroundColor: isDark ? "#020617" : "#e5e7eb",
+                                    }}
+                                >
+                                    {r.imageUrl ? (
+                                        <Image
+                                            source={{ uri: r.imageUrl }}
+                                            className="w-16 h-16"
+                                            resizeMode="cover"
+                                        />
+                                    ) : (
+                                        <View className="w-16 h-16 items-center justify-center">
+                                            <Feather
+                                                name="image"
+                                                size={18}
+                                                color={COLORS.iconMuted}
+                                            />
+                                        </View>
+                                    )}
                                 </View>
 
                                 <View className="flex-1">

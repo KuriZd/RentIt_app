@@ -26,7 +26,7 @@ export default function AuthCard({ title, subtitle, children }: Props) {
               uri:
                 "https://plus.unsplash.com/premium_photo-1661914978519-52a11fe159a7?q=80&w=735&auto=format&fit=crop&ixlib=rb-4.1.0",
             }}
-            accessibilityLabel="Ledgerly logo"
+            accessibilityLabel="Rent-It logo"
             className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl"
           />
           <Text className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
