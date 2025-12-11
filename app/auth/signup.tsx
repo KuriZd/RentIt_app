@@ -7,6 +7,7 @@ import React, { useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -41,6 +42,9 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState<boolean>(false);
   const [submitted, setSubmitted] = useState<boolean>(false);
 
+  // modal verificación
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+
   // validations
   const hasMinLen = pw.length >= 8;
   const hasUpper = /[A-Z]/.test(pw);
@@ -55,7 +59,13 @@ export default function SignupScreen() {
     submitted && pw2 && !pwMatch ? "Las contraseñas no coinciden" : "";
 
   const canSubmit = useMemo(
-    () => Boolean(email) && hasMinLen && hasUpper && hasSymbol && pwMatch && !loading,
+    () =>
+      Boolean(email) &&
+      hasMinLen &&
+      hasUpper &&
+      hasSymbol &&
+      pwMatch &&
+      !loading,
     [email, hasMinLen, hasUpper, hasSymbol, pwMatch, loading]
   );
 
@@ -88,22 +98,18 @@ export default function SignupScreen() {
   };
 
   const onSubmit = async () => {
-    if (loading) return;
+    if (!canSubmit || loading) return;
 
-    // marcamos como enviado para que se vean los errores
     setSubmitted(true);
-
-    // si no pasa validaciones, no intentamos registrar
-    if (!canSubmit) return;
-
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signUp({ email, password: pw });
+      const { error } = await supabase.auth.signUp({
+        email,
+        password: pw,
+      });
 
       if (error) {
-        console.log("signUp error:", error);
-
         let msg = "Ocurrió un error al registrarte. Inténtalo de nuevo.";
 
         if (error.message.includes("already registered"))
@@ -115,19 +121,11 @@ export default function SignupScreen() {
         return;
       }
 
-      // pequeño delay para UX
-      await new Promise((r) => setTimeout(r, 500));
+      // Pequeño delay por UX
+      await new Promise((r) => setTimeout(r, 400));
 
-      Alert.alert(
-        "🎉 ¡Registro exitoso!",
-        "Revisa tu correo electrónico para verificar tu cuenta antes de iniciar sesión.",
-        [
-          {
-            text: "Ir al inicio de sesión",
-            onPress: () => router.replace("/auth/login"),
-          },
-        ]
-      );
+      // 🔔 Mostramos modal bonito de verificación
+      setShowVerifyModal(true);
     } catch (err) {
       console.error(err);
       Alert.alert(
@@ -140,6 +138,11 @@ export default function SignupScreen() {
   };
 
   const keyboardOffset = Platform.select({ ios: 100, android: 80 });
+
+  const goToLogin = () => {
+    setShowVerifyModal(false);
+    router.replace("/auth/login");
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-gradient-to-b from-zinc-50 to-white dark:from-[#0b0b0c] dark:to-[#0f1115]">
@@ -236,36 +239,28 @@ export default function SignupScreen() {
                   </View>
                 </View>
 
-                {/* Requisitos de contraseña (siempre visibles) */}
-                <View className="mb-4 space-y-3">
-                  <Text className="text-xs mb-1 text-zinc-500 dark:text-zinc-400">
-                    Tu contraseña debe incluir:
-                  </Text>
-
-                  {requirements.map(({ key, label, valid }) => {
-                    const isPristine = pw.length === 0;
-                    const dotClass = isPristine
-                      ? "bg-zinc-400"
-                      : valid
-                        ? "bg-emerald-500"
-                        : "bg-red-500";
-                    const textClass = isPristine
-                      ? "text-zinc-500 dark:text-zinc-400"
-                      : valid
-                        ? "text-emerald-700 dark:text-emerald-400"
-                        : "text-red-700 dark:text-red-400";
-
-                    return (
-                      <View
-                        key={key}
-                        className="flex-row items-center gap-3"
-                      >
-                        <View className={`h-5 w-5 rounded-full ${dotClass}`} />
-                        <Text className={`text-sm ${textClass}`}>{label}</Text>
+                {/* Requisitos (solo tras submit) */}
+                {/* Requisitos de contraseña (se muestran al escribir) */}
+                {(submitted || pw.length > 0) && (
+                  <View className="mb-4 space-y-2">
+                    {requirements.map(({ key, label, valid }) => (
+                      <View key={key} className="flex-row items-center" style={{ gap: 10 }}>
+                        <View
+                          className={`h-5 w-5 rounded-full ${valid ? "bg-emerald-500" : "bg-red-500"
+                            }`}
+                        />
+                        <Text
+                          className={`text-sm ${valid
+                            ? "text-emerald-700 dark:text-emerald-400"
+                            : "text-red-700 dark:text-red-400"
+                            }`}
+                        >
+                          {label}
+                        </Text>
                       </View>
-                    );
-                  })}
-                </View>
+                    ))}
+                  </View>
+                )}
 
 
                 {/* Confirm Password */}
@@ -318,7 +313,7 @@ export default function SignupScreen() {
                   <Button
                     onPress={onSubmit}
                     className={!canSubmit ? "opacity-70" : ""}
-                    disabled={loading}
+                    disabled={!canSubmit}
                   >
                     <Text className="font-medium text-white dark:text-zinc-900 text-lg">
                       {loading ? "Registrando..." : "Sign up"}
@@ -371,6 +366,56 @@ export default function SignupScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Modal estilizado de verificación de correo */}
+      <Modal
+        visible={showVerifyModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={goToLogin}
+      >
+        <View
+          className="flex-1 items-center justify-center px-6"
+          style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+        >
+          <View className="w-full max-w-md rounded-3xl bg-white dark:bg-zinc-900 px-6 py-6">
+            <View className="items-center mb-4">
+              <View className="h-12 w-12 rounded-full items-center justify-center bg-emerald-100 dark:bg-emerald-900/40 mb-3">
+                <Feather name="mail" size={26} color="#16a34a" />
+              </View>
+              <Text className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 text-center">
+                ¡Registro exitoso!
+              </Text>
+              <Text className="mt-2 text-sm text-zinc-500 dark:text-zinc-400 text-center">
+                Te enviamos un enlace de verificación a{" "}
+                <Text className="font-semibold text-zinc-800 dark:text-zinc-100">
+                  {email || "tu correo"}
+                </Text>
+                . {"\n"}
+                Confirma tu cuenta desde tu correo y luego inicia sesión para
+                continuar.
+              </Text>
+            </View>
+
+            <View className="mt-4 space-y-3">
+              <Pressable
+                onPress={goToLogin}
+                className="h-11 items-center justify-center rounded-xl bg-emerald-600"
+              >
+                <Text className="text-sm font-semibold text-white">
+                  Ir al inicio de sesión
+                </Text>
+              </Pressable>
+
+              <Text className="text-[11px] text-zinc-500 dark:text-zinc-400 text-center">
+                Si no ves el correo en unos minutos, revisa también tu carpeta
+                de spam o promociones.
+              </Text>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
