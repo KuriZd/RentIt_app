@@ -12,25 +12,36 @@ import HeaderSearch from "../../components/HeaderSearch";
 import ProductCarousel from "../../components/ProductCarousel";
 import { supabase } from "../../utils/supabase";
 
-/* --------- Tipo que espera tu ProductCarousel --------- */
 type Item = {
   id: string;
   title: string;
-  price: number; // mostramos el precio total para el periodo
-  per: string; // ej: "por 3 días" | "por 1 hora"
+  price: number;
+  per: string;
   image: string;
-  category: Category["key"]; // usamos el id de categoría como string
+  category: Category["key"];
 };
 
-/* --------- helpers --------- */
+type CategoryRow = {
+  id: number;
+  nombre: string | null;
+  slug: string | null;
+};
+
+type DynamicSection = {
+  categoryId: string;
+  categoryName: string;
+  items: Item[];
+};
+
 const unitLabel = (u?: string) =>
   u === "hora" ? "hora" : u === "semana" ? "semana" : "día";
 
 function toItem(row: any): Item {
   const qty = Number(row.periodo_cantidad ?? 1) || 1;
-  const perUnit = Number(row.precio ?? 0) || 0; // precio POR UNIDAD
-  const total = +(perUnit * qty).toFixed(2); // total del periodo
+  const perUnit = Number(row.precio ?? 0) || 0;
+  const total = +(perUnit * qty).toFixed(2);
   const unidad = unitLabel(row.unidad_precio);
+
   return {
     id: String(row.id),
     title: row.titulo ?? "",
@@ -39,7 +50,7 @@ function toItem(row: any): Item {
     image:
       row.url_publica ||
       "https://images.unsplash.com/photo-1762704958591-fea0534458cc?ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&q=80&w=687",
-    category: String(row.id_categoria ?? ""),
+    category: String(row.id_categoria ?? "") as Category["key"],
   };
 }
 
@@ -47,16 +58,17 @@ export default function HomeScreen() {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
     null
   );
-  const [query, setQuery] = useState<string>(""); // de momento no se actualiza, pero lo dejamos para cuando conectes la búsqueda
+  const [query, setQuery] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // datasets reales
+  // estáticos
   const [today, setToday] = useState<Item[]>([]);
-  const [popularHome, setPopularHome] = useState<Item[]>([]);
   const [recommended, setRecommended] = useState<Item[]>([]);
 
-  /* ---------- carga desde Supabase ---------- */
+  // dinámicos (máx 4)
+  const [dynamicSections, setDynamicSections] = useState<DynamicSection[]>([]);
+
   useEffect(() => {
     let alive = true;
 
@@ -64,52 +76,91 @@ export default function HomeScreen() {
       setLoading(true);
       setErrorMsg(null);
 
-      // 1) obtenemos al usuario para conocer su id
       const {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser();
+      if (userError) console.error(userError);
 
-      if (userError) {
-        console.error(userError);
-      }
-
-      // 2) query base
-      let queryBuilder = supabase
-        .from("articulos")
-        .select(
-          "id, titulo, precio, unidad_precio, periodo_cantidad, url_publica, id_categoria, publicado_en, id_propietario"
-        )
-        .eq("estado_publicacion", "publicado")
-        .order("publicado_en", { ascending: false })
-        .limit(48);
-
-      // 3) si hay usuario, excluimos sus propios artículos
-      if (user?.id) {
-        queryBuilder = queryBuilder.neq("id_propietario", user.id);
-      }
-
-      const { data, error } = await queryBuilder;
+      const [artRes, catRes] = await Promise.all([
+        supabase
+          .from("articulos")
+          .select(
+            "id, titulo, precio, unidad_precio, periodo_cantidad, url_publica, id_categoria, publicado_en, id_propietario"
+          )
+          .eq("estado_publicacion", "publicado")
+          .order("publicado_en", { ascending: false })
+          .limit(120)
+          // si hay usuario, no mostrar sus propios artículos
+          .neq("id_propietario", user?.id ?? ""),
+        supabase.from("categorias").select("id, nombre, slug"),
+      ]);
 
       if (!alive) return;
 
-      if (error) {
-        setErrorMsg(error.message);
+      if (artRes.error || catRes.error) {
+        console.error(artRes.error || catRes.error);
+        setErrorMsg(
+          artRes.error?.message ||
+          catRes.error?.message ||
+          "Error al cargar los artículos."
+        );
         setToday([]);
-        setPopularHome([]);
         setRecommended([]);
-      } else {
-        const items = (data ?? []).map(toItem);
-
-        // dividir en 3 bloques para tu layout
-        const a = items.slice(0, 12);
-        const b = items.slice(12, 24);
-        const c = items.slice(24, 48);
-
-        setToday(a);
-        setPopularHome(b.length ? b : a);
-        setRecommended(c.length ? c : a);
+        setDynamicSections([]);
+        setLoading(false);
+        return;
       }
+
+      const artRows = artRes.data ?? [];
+      const catRows = (catRes.data ?? []) as CategoryRow[];
+
+      const allItems = artRows.map(toItem);
+
+      // Today & Recommended (estáticos)
+      const a = allItems.slice(0, 12);
+      const b = allItems.slice(12, 24);
+
+      setToday(a);
+      setRecommended(b.length ? b : a);
+
+      // mapa id_categoria -> nombre
+      const catNameById = new Map<string, string>();
+      catRows.forEach((c) => {
+        if (c.id != null) {
+          catNameById.set(String(c.id), c.nombre || `Categoría ${c.id}`);
+        }
+      });
+
+      // agrupar por categoría
+      const byCategory = new Map<string, DynamicSection>();
+
+      allItems.forEach((it) => {
+        const raw = (it.category as any) ?? "";
+        const catId = String(raw);
+
+        // evitamos ids vacíos / undefined / null
+        if (!raw || catId === "undefined" || catId === "null") return;
+
+        const name = catNameById.get(catId) ?? `Categoría ${catId}`;
+        const existing = byCategory.get(catId);
+
+        if (existing) {
+          existing.items.push(it);
+        } else {
+          byCategory.set(catId, {
+            categoryId: catId,
+            categoryName: name,
+            items: [it],
+          });
+        }
+      });
+
+      const sortedSections = Array.from(byCategory.values())
+        .sort((a, b) => b.items.length - a.items.length)
+        .slice(0, 4);
+
+      setDynamicSections(sortedSections);
       setLoading(false);
     }
 
@@ -119,7 +170,6 @@ export default function HomeScreen() {
     };
   }, []);
 
-  /* ---------- filtros en memoria ---------- */
   function applyFilters(items: Item[], category?: Category["key"], q?: string) {
     const qq = (q ?? "").trim().toLowerCase();
     return items.filter((it) => {
@@ -130,8 +180,8 @@ export default function HomeScreen() {
   }
 
   const allItems = useMemo<Item[]>(
-    () => [...today, ...popularHome, ...recommended],
-    [today, popularHome, recommended]
+    () => [...today, ...recommended, ...dynamicSections.flatMap((s) => s.items)],
+    [today, recommended, dynamicSections]
   );
 
   const filteredAll = useMemo(
@@ -142,14 +192,20 @@ export default function HomeScreen() {
     () => applyFilters(today, selectedCategory?.key, query),
     [today, selectedCategory, query]
   );
-  const filteredPopular = useMemo(
-    () => applyFilters(popularHome, selectedCategory?.key, query),
-    [popularHome, selectedCategory, query]
-  );
   const filteredRecommended = useMemo(
     () => applyFilters(recommended, selectedCategory?.key, query),
     [recommended, selectedCategory, query]
   );
+
+  const filteredDynamicSections = useMemo(() => {
+    if (!selectedCategory && !query.trim()) return dynamicSections;
+    return dynamicSections
+      .map((sec) => ({
+        ...sec,
+        items: applyFilters(sec.items, selectedCategory?.key, query),
+      }))
+      .filter((sec) => sec.items.length > 0);
+  }, [dynamicSections, selectedCategory, query]);
 
   const isFiltering = !!selectedCategory || !!query.trim();
 
@@ -157,15 +213,10 @@ export default function HomeScreen() {
     <View className="flex-1 bg-white dark:bg-black">
       <HeaderSearch
         onCategorySelected={(cat) => setSelectedCategory(cat)}
-        onSearchPress={() => {
-          // cuando quieras, aquí puedes abrir una pantalla de búsqueda o algo similar
-        }}
-        onSellPress={() => {
-          // aquí iría la navegación a la pantalla de publicar artículo
-        }}
+        onSearchPress={() => { }}
+        onSellPress={() => { }}
       />
 
-      {/* Loading / Error */}
       {loading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator />
@@ -182,7 +233,6 @@ export default function HomeScreen() {
         </View>
       ) : (
         <>
-          {/* Chip de filtro activo */}
           {(selectedCategory || query.trim()) && (
             <View className="px-5 pt-2 flex-row flex-wrap gap-2">
               {selectedCategory && (
@@ -217,7 +267,7 @@ export default function HomeScreen() {
                 <View className="px-5 pt-4">
                   <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
                     {selectedCategory
-                      ? `Results for ${selectedCategory.label}`
+                      ? `Resultados para ${selectedCategory.label}`
                       : "Resultados"}
                   </Text>
                   {filteredAll.length === 0 && (
@@ -234,6 +284,7 @@ export default function HomeScreen() {
               </>
             ) : (
               <>
+                {/* Today (estático) */}
                 <View className="px-5 pt-4">
                   <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
                     Today selection
@@ -245,17 +296,25 @@ export default function HomeScreen() {
                   cardWidth={160}
                 />
 
-                <View className="px-5 mt-6">
-                  <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-                    Popular for the home
-                  </Text>
-                </View>
-                <ProductCarousel
-                  items={filteredPopular}
-                  className="mt-3"
-                  cardWidth={160}
-                />
+                {/* Secciones dinámicas por categoría */}
+                {filteredDynamicSections.map((sec, index) => (
+                  <View
+                    key={`cat-section-${sec.categoryId || `idx-${index}`}`}
+                  >
+                    <View className="px-5 mt-6">
+                      <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+                        Popular en {sec.categoryName}
+                      </Text>
+                    </View>
+                    <ProductCarousel
+                      items={sec.items}
+                      className="mt-3"
+                      cardWidth={160}
+                    />
+                  </View>
+                ))}
 
+                {/* Recommended (estático) */}
                 <View className="px-5 mt-6 mb-4">
                   <Text className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
                     Recommended for you

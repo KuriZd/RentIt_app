@@ -1,5 +1,5 @@
 import React from "react";
-import { Image, Text, View } from "react-native";
+import { Image, Text, View, useColorScheme } from "react-native";
 
 type Props = {
   title: string;
@@ -8,6 +8,13 @@ type Props = {
 };
 
 export default function AuthCard({ title, subtitle, children }: Props) {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
+
+  const logoSource = isDark
+    ? require("../assets/images/LogoB.png")
+    : require("../assets/images/LogoN.png");
+
   return (
     <View
       className={[
@@ -22,10 +29,7 @@ export default function AuthCard({ title, subtitle, children }: Props) {
       <View className="gap-6">
         <View className="flex-row items-center gap-4">
           <Image
-            source={{
-              uri:
-                "https://plus.unsplash.com/premium_photo-1661914978519-52a11fe159a7?q=80&w=735&auto=format&fit=crop&ixlib=rb-4.1.0",
-            }}
+            source={logoSource}
             accessibilityLabel="Rent-It logo"
             className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl"
           />
