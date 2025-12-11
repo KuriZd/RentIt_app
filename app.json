@@ -20,14 +20,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-<<<<<<< HEAD
-      "package": "com.anonymous.RentIt_app",
-      "permissions": [
-        "android.permission.CAMERA"
-      ]
-=======
       "package": "com.anonymous.RentIt_app"
->>>>>>> origin/Yayo2.0
     },
     "web": {
       "output": "static",

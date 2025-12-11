@@ -1,14 +1,14 @@
-// app/(checkout)/write-to-host.tsx
+// app/(checkout)/WriteToHost.tsx
 import { supabase } from "@/utils/supabase";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    Pressable,
-    Text,
-    TextInput,
-    View,
-    useColorScheme,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+  useColorScheme,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -107,7 +107,7 @@ export default function WriteToHostScreen() {
 
         const propietarioId = String(
           (art as { id_propietario: string | number | null }).id_propietario ??
-            ""
+          ""
         );
 
         if (!propietarioId || cancelled) return;
