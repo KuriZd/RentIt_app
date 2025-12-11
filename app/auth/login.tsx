@@ -11,6 +11,7 @@ import {
   Animated,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -34,22 +35,18 @@ import { supabase } from "../../utils/supabase";
 export default function LoginScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const showHero = width >= 768; // md+
+  const showHero = width >= 768;
 
-  // form state
   const [email, setEmail] = useState<string>("");
   const [pw, setPw] = useState<string>("");
   const [showPw, setShowPw] = useState<boolean>(false);
   const [remember, setRemember] = useState<boolean>(false);
 
-  // cred loading flag
   const [credsLoaded, setCredsLoaded] = useState<boolean>(false);
 
-  // loading flags
   const [sessionLoading, setSessionLoading] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // error messages
   const [errors, setErrors] = useState<{
     email: string;
     pw: string;
@@ -60,7 +57,10 @@ export default function LoginScreen() {
     general: "",
   });
 
-  // spin animation
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  const handledSessionRef = useRef(false);
+
   const spinAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.loop(
@@ -76,24 +76,73 @@ export default function LoginScreen() {
     outputRange: ["0deg", "360deg"],
   });
 
-  // session check & listener
+  const routeAfterLogin = async (userId: string) => {
+    if (handledSessionRef.current) return;
+    handledSessionRef.current = true;
+
+    try {
+      const { data: perfil, error: perfilError } = await supabase
+        .from("perfiles")
+        .select("nombre, fecha_nacimiento, direccion")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (perfilError) {
+        console.error("Error cargando perfil:", perfilError);
+        router.replace("/main");
+        return;
+      }
+
+      const dir = (perfil as any)?.direccion ?? {};
+      const perfilIncompleto =
+        !perfil ||
+        !perfil.nombre ||
+        !perfil.fecha_nacimiento ||
+        !dir.calle ||
+        !dir.municipio ||
+        !dir.estado;
+
+      if (perfilIncompleto) {
+        setShowProfileModal(true);
+      } else {
+        router.replace("/main");
+      }
+    } catch (e) {
+      console.error("Error en routeAfterLogin:", e);
+      router.replace("/main");
+    } finally {
+      setSessionLoading(false);
+    }
+  };
+
   useEffect(() => {
     supabase.auth
       .getSession()
       .then(({ data: { session } }) => {
-        if (session) router.replace("/main");
+        if (session?.user) {
+          routeAfterLogin(session.user.id);
+        } else {
+          setSessionLoading(false);
+        }
       })
-      .finally(() => setSessionLoading(false));
+      .catch((e) => {
+        console.error("Error getSession:", e);
+        setSessionLoading(false);
+      });
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        if (session) router.replace("/main");
+        if (session?.user) {
+          routeAfterLogin(session.user.id);
+        } else {
+          setSessionLoading(false);
+        }
       }
     );
+
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // load saved credentials
   useEffect(() => {
     (async () => {
       try {
@@ -112,7 +161,6 @@ export default function LoginScreen() {
     })();
   }, []);
 
-  // OAuth handler
   const handleOAuth = async (provider: Provider) => {
     const { data, error } = await supabase.auth.signInWithOAuth({ provider });
     if (error) {
@@ -122,9 +170,8 @@ export default function LoginScreen() {
     if (data?.url) await Linking.openURL(data.url);
   };
 
-  // email/password login
   async function onLogin() {
-    if (!credsLoaded) return;
+    if (!credsLoaded || loading) return;
 
     const newErr = { email: "", pw: "", general: "" };
     let hasError = false;
@@ -161,11 +208,23 @@ export default function LoginScreen() {
         }
       } catch (err) {
         console.warn("Error saving credentials:", err);
+      } finally {
+        setLoading(false);
       }
     }
   }
 
   const keyboardOffset = Platform.select({ ios: 100, android: 80 });
+
+  const handleProfileLater = () => {
+    setShowProfileModal(false);
+    router.replace("/main");
+  };
+
+  const handleProfileNow = () => {
+    setShowProfileModal(false);
+    router.replace("/(profile)/editprofile?onboarding=1");
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-gradient-to-b from-zinc-50 to-white dark:from-[#0b0b0c] dark:to-[#0f1115]">
@@ -177,7 +236,7 @@ export default function LoginScreen() {
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }} // centrado en mobile
+          contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
           className="min-h-screen"
         >
           <View
@@ -191,14 +250,12 @@ export default function LoginScreen() {
                 title="Welcome back"
                 subtitle="Sign in to keep your numbers aligned with your goals."
               >
-                {/* errores generales */}
                 {!!errors.general && (
                   <View className="mb-4 px-3 py-2 bg-red-100 border border-red-400 rounded">
                     <Text className="text-red-700">{errors.general}</Text>
                   </View>
                 )}
 
-                {/* Email */}
                 <View className="mb-3">
                   <Text className="mb-2 text-base font-medium text-zinc-700 dark:text-zinc-300">
                     Email
@@ -236,7 +293,6 @@ export default function LoginScreen() {
                   )}
                 </View>
 
-                {/* Password */}
                 <View className="mb-2">
                   <Text className="mb-2 text-base font-medium text-zinc-700 dark:text-zinc-300">
                     Password
@@ -273,7 +329,6 @@ export default function LoginScreen() {
                   )}
                 </View>
 
-                {/* Remember / Forgot */}
                 <View className="mb-5 flex-row items-center justify-between">
                   <View className="flex-row items-center gap-2">
                     <Checkbox
@@ -294,7 +349,6 @@ export default function LoginScreen() {
                   </Link>
                 </View>
 
-                {/* Sign in */}
                 <Button
                   onPress={onLogin}
                   className={loading ? "opacity-70" : ""}
@@ -307,7 +361,6 @@ export default function LoginScreen() {
 
                 <Separator />
 
-                {/* OAuth */}
                 <View className="gap-3">
                   <OAuthButton
                     label="Continuar con Google"
@@ -321,7 +374,6 @@ export default function LoginScreen() {
                   />
                 </View>
 
-                {/* Footer */}
                 <View className="mt-8">
                   <Text className="text-center text-base text-zinc-700 dark:text-zinc-300">
                     Don’t have an account?{" "}
@@ -356,6 +408,54 @@ export default function LoginScreen() {
           </View>
         </BlurView>
       )}
+
+      <Modal
+        visible={showProfileModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={handleProfileLater}
+      >
+        <View
+          className="flex-1 items-center justify-center px-6"
+          style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+        >
+          <View className="w-full max-w-md rounded-3xl bg-white dark:bg-zinc-900 px-6 py-6">
+            <View className="items-center mb-4">
+              <View className="h-12 w-12 rounded-full items-center justify-center bg-blue-100 dark:bg-blue-900/40 mb-3">
+                <Feather name="user-check" size={26} color="#2563eb" />
+              </View>
+              <Text className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 text-center">
+                Completa tu perfil
+              </Text>
+              <Text className="mt-2 text-sm text-zinc-500 dark:text-zinc-400 text-center">
+                Para usar RentIt y publicar artículos necesitamos algunos datos
+                básicos como tu nombre y dirección.
+              </Text>
+            </View>
+
+            <View className="mt-4 flex-row gap-3">
+              <Pressable
+                onPress={handleProfileLater}
+                className="flex-1 h-11 items-center justify-center rounded-xl border border-zinc-300 dark:border-zinc-700"
+              >
+                <Text className="text-sm font-medium text-zinc-700 dark:text-zinc-100">
+                  Más tarde
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={handleProfileNow}
+                className="flex-1 h-11 items-center justify-center rounded-xl bg-blue-600"
+              >
+                <Text className="text-sm font-semibold text-white">
+                  Completar ahora
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
+
