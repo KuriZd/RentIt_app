@@ -45,6 +45,7 @@ type Profile = {
   id: string;
   nombre: string | null;
   avatar_url: string | null;
+  expo_push_token?: string | null;
 };
 
 const AVATAR_FALLBACK =
@@ -277,7 +278,7 @@ export default function ChatDetail() {
     const loadProfile = async () => {
       const { data, error } = await supabase
         .from("perfiles")
-        .select("id, nombre, avatar_url")
+        .select("id, nombre, avatar_url, expo_push_token")
         .eq("id", otherUserId)
         .maybeSingle();
 
@@ -348,6 +349,7 @@ export default function ChatDetail() {
 
   const onSend = async () => {
     if (!value.trim() || !id || !userId) return;
+
     const content = value.trim();
     setValue("");
     scrollToBottom(false);
@@ -366,7 +368,7 @@ export default function ChatDetail() {
 
     // 2) Enviar push al otro usuario
     try {
-      // si no sabemos quién es el otro usuario, salimos
+      // si no sabemos quién es el otro usuario o soy yo mismo, salimos
       if (!otherUserId || otherUserId === userId) return;
 
       const { data, error: pErr } = await supabase
@@ -385,18 +387,21 @@ export default function ChatDetail() {
         return;
       }
 
-      const title = otherProfile?.nombre
-        ? `Nuevo mensaje de ${otherProfile.nombre}`
+      const title = data.nombre
+        ? `Nuevo mensaje de ${data.nombre}`
         : "Nuevo mensaje";
 
-      await sendPushNotification(data.expo_push_token, title, content, {
+      // opcional: recortar cuerpo de la notificación
+      const body =
+        content.length > 80 ? content.slice(0, 77).trimEnd() + "…" : content;
+
+      await sendPushNotification(data.expo_push_token, title, body, {
         roomId: id,
       });
     } catch (e) {
       console.log("Error enviando push notification:", e);
     }
   };
-
 
   // cuando cambie la cantidad de mensajes, baja al final
   useEffect(() => {
