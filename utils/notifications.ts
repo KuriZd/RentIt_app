@@ -5,10 +5,15 @@ import { Platform } from "react-native";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
+    // todavía lo puedes dejar por compatibilidad
+    shouldShowAlert: true,
+
+    // nuevos flags que ahora son requeridos por el tipo
+    shouldShowBanner: true, // se muestra como banner (iOS)
+    shouldShowList: true,   // aparece en el Notification Center / lista
+
     shouldPlaySound: false,
     shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
   }),
 });
 
@@ -31,6 +36,8 @@ export async function registerForPushNotificationsAsync() {
     return null;
   }
 
+  // Si tu proyecto usa EAS con projectId, y esto te da error,
+  // luego podemos pasar el projectId aquí.
   const token = (await Notifications.getExpoPushTokenAsync()).data;
   console.log("Expo push token:", token);
 
