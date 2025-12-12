@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "RentIt_app",
-    "slug": "rentit",
+    "name": "RentIt",
+    "slug": "RentIt_app",
     "scheme": "rentitapp",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -42,7 +42,8 @@
         }
       ],
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,
