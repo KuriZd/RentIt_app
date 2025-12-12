@@ -212,6 +212,8 @@ export default function HomeScreen() {
   return (
     <View className="flex-1 bg-white dark:bg-black">
       <HeaderSearch
+        query={query}
+        onQueryChange={setQuery}
         onCategorySelected={(cat) => setSelectedCategory(cat)}
         onSearchPress={() => { }}
         onSellPress={() => { }}
