@@ -1,3 +1,4 @@
+//item/[id].tsx
 import { sendPushNotification } from "@/utils/notifications";
 import { supabase } from "@/utils/supabase";
 import { Feather } from "@expo/vector-icons";
@@ -50,10 +51,10 @@ type DeliveryMethod = "Envio" | "Pickup" | "Entrega";
 
 type ToastState =
   | {
-      type: "success" | "error";
-      title: string;
-      message?: string;
-    }
+    type: "success" | "error";
+    title: string;
+    message?: string;
+  }
   | null;
 
 type ToastProps = {
@@ -256,7 +257,6 @@ function ProgressBar({ duration }: { duration: number }) {
   );
 }
 
-
 function useToast() {
   const [toast, setToast] = useState<ToastState>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -367,13 +367,18 @@ export default function ItemDetail() {
 
   const [item, setItem] = useState<Articulo | null>(null);
   const [rating, setRating] = useState<ReviewAgg>({ avg: 0, count: 0 });
+
+  // 🔹 Ahora guardamos también el id del owner
   const [owner, setOwner] = useState<{
+    id: string | null;
     nombre: string;
     avatar?: string | null;
   }>({
+    id: null,
     nombre: "Usuario",
     avatar: null,
   });
+
   const [loading, setLoading] = useState(true);
   const [addingToCart, setAddingToCart] = useState(false);
   const { toast, showToast, hideToast } = useToast();
@@ -407,10 +412,7 @@ export default function ItemDetail() {
 
       if (artErr) throw artErr;
       if (!art) {
-        Alert.alert(
-          "No encontrado",
-          "El artículo no existe o fue eliminado."
-        );
+        Alert.alert("No encontrado", "El artículo no existe o fue eliminado.");
         return;
       }
 
@@ -426,8 +428,15 @@ export default function ItemDetail() {
         if (perfilErr) throw perfilErr;
 
         setOwner({
+          id: String(art.id_propietario), // 🔹 guardamos id
           nombre: (perfil as any)?.nombre ?? "Usuario",
           avatar: (perfil as any)?.avatar_url ?? null,
+        });
+      } else {
+        setOwner({
+          id: null,
+          nombre: "Usuario",
+          avatar: null,
         });
       }
 
@@ -474,15 +483,15 @@ export default function ItemDetail() {
     item?.estado_articulo === "disponible"
       ? "#10b981"
       : item?.estado_articulo === "mantenimiento"
-      ? "#f59e0b"
-      : "#ef4444";
+        ? "#f59e0b"
+        : "#ef4444";
 
   const estadoPublicacionColor =
     item?.estado_publicacion === "publicado"
       ? "#2563eb"
       : item?.estado_publicacion === "pausado"
-      ? "#f59e0b"
-      : "#9ca3af";
+        ? "#f59e0b"
+        : "#9ca3af";
 
   const handleReserve = async () => {
     if (!item) return;
@@ -508,8 +517,8 @@ export default function ItemDetail() {
       const metodo: DeliveryMethod = item.solo_retiro
         ? "Pickup"
         : item.entrega_disponible
-        ? "Envio"
-        : "Entrega";
+          ? "Envio"
+          : "Entrega";
 
       const { error: insertErr } = await supabase.from("cart_items").insert({
         id_carrito: cartId,
@@ -578,6 +587,13 @@ export default function ItemDetail() {
       setAddingToCart(false);
     }
   };
+
+  const handleOpenOwnerProfile = () => {
+    if (!owner.id) return;
+
+    router.push(`/host/${owner.id}`);
+  };
+
 
   return (
     <View
@@ -710,7 +726,13 @@ export default function ItemDetail() {
               style={{ backgroundColor: COLORS.border }}
             />
 
-            <View className="flex-row items-center">
+            {/* 🔹 Bloque del propietario ahora es clickeable */}
+            <Pressable
+              className="flex-row items-center"
+              onPress={handleOpenOwnerProfile}
+              android_ripple={{ color: "#00000022" }}
+              style={{ borderRadius: 999 }}
+            >
               <Image
                 source={{
                   uri: owner.avatar || "https://i.pravatar.cc/80?img=12",
@@ -728,7 +750,15 @@ export default function ItemDetail() {
                   Propietario verificado
                 </Text>
               </View>
-            </View>
+
+              {owner.id && (
+                <Feather
+                  name="chevron-right"
+                  size={18}
+                  color={COLORS.iconMuted}
+                />
+              )}
+            </Pressable>
 
             <View
               className="my-5 h-px"
@@ -848,7 +878,7 @@ export default function ItemDetail() {
                 style={{
                   backgroundColor: isDark ? "#18181b" : "#f3f4f6",
                 }}
-                onPress={() => {}}
+                onPress={() => { }}
               >
                 <Text
                   className="text-sm font-semibold"

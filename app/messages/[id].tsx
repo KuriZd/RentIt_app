@@ -17,6 +17,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { sendPushNotification } from "../../utils/notifications";
 import { supabase } from "../../utils/supabase";
 
 type ReadStatus = "sent" | "delivered" | "read";
@@ -351,6 +352,7 @@ export default function ChatDetail() {
     setValue("");
     scrollToBottom(false);
 
+    // 1) Insertar mensaje en Supabase
     const { error } = await supabase.from("messages").insert({
       room_id: id,
       sender_id: userId,
@@ -359,8 +361,42 @@ export default function ChatDetail() {
 
     if (error) {
       console.error("Error al enviar mensaje", error);
+      return;
+    }
+
+    // 2) Enviar push al otro usuario
+    try {
+      // si no sabemos quién es el otro usuario, salimos
+      if (!otherUserId || otherUserId === userId) return;
+
+      const { data, error: pErr } = await supabase
+        .from("perfiles")
+        .select("expo_push_token, nombre")
+        .eq("id", otherUserId)
+        .maybeSingle();
+
+      if (pErr) {
+        console.log("Error obteniendo token de push:", pErr);
+        return;
+      }
+
+      if (!data?.expo_push_token) {
+        // El usuario aún no registró su token (no ha abierto la app / aceptado permisos)
+        return;
+      }
+
+      const title = otherProfile?.nombre
+        ? `Nuevo mensaje de ${otherProfile.nombre}`
+        : "Nuevo mensaje";
+
+      await sendPushNotification(data.expo_push_token, title, content, {
+        roomId: id,
+      });
+    } catch (e) {
+      console.log("Error enviando push notification:", e);
     }
   };
+
 
   // cuando cambie la cantidad de mensajes, baja al final
   useEffect(() => {

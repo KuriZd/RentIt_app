@@ -25,7 +25,6 @@ type HostProfile = {
     creado_en: string | null;
     actualizado_en: string | null;
     nombre: string | null;
-    curp: string | null;
     genero: string | null;
     estado_civil: string | null;
     numero_medico: string | null;
@@ -46,6 +45,17 @@ type HostReview = {
     creado_en: string | null;
     autor_nombre: string | null;
     autor_avatar: string | null;
+};
+
+type HostArticle = {
+    id: number;
+    titulo: string | null;
+    url_publica: string | null;
+    precio: number | null;
+    unidad_precio: "hora" | "dia" | "semana" | null;
+    periodo_cantidad: number | null;
+    estado_articulo: string | null;
+    estado_publicacion: string | null;
 };
 
 function InfoRow(props: {
@@ -108,6 +118,26 @@ function timeAgo(dateIso: string | null): string {
     return `hace ${weeks} semana${weeks === 1 ? "" : "s"}`;
 }
 
+function membershipLengthLabel(createdIso: string | null): string {
+    if (!createdIso) return "Sin información";
+    const d = new Date(createdIso);
+    if (Number.isNaN(d.getTime())) return "Sin información";
+
+    const diffMs = Date.now() - d.getTime();
+    const days = diffMs / (1000 * 60 * 60 * 24);
+    const years = Math.floor(days / 365.25);
+    const months = Math.floor((days % 365.25) / 30);
+
+    if (years <= 0 && months <= 0) return "Menos de un mes en la plataforma";
+    if (years <= 0)
+        return `${months} mes${months === 1 ? "" : "es"} en la plataforma`;
+    if (months <= 0)
+        return `${years} año${years === 1 ? "" : "s"} en la plataforma`;
+
+    return `${years} año${years === 1 ? "" : "s"} y ${months} mes${months === 1 ? "" : "es"
+        } en la plataforma`;
+}
+
 export default function HostProfileScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
@@ -117,17 +147,17 @@ export default function HostProfileScreen() {
 
     const COLORS = useMemo(
         () => ({
-            pill: isDark ? "#27272a" : "#f3f4f6",
+            pill: isDark ? "#18181b" : "#f3f4f6",
             icon: isDark ? "#e5e7eb" : "#111827",
             iconMuted: isDark ? "#a1a1aa" : "#6b7280",
-            ring: isDark ? "#3f3f46" : "#e5e7eb",
+            ring: isDark ? "#27272a" : "#e5e7eb",
             overlay: "rgba(0,0,0,0.30)",
-            bg: isDark ? "#0b0b0c" : "#ffffff",
-            text: isDark ? "#fafafa" : "#111827",
-            subtext: isDark ? "#a1a1aa" : "#6b7280",
-            border: isDark ? "#3f3f46" : "#e5e7eb",
-            card: isDark ? "#18181b" : "#ffffff",
-            accent: "#ec4899",
+            bg: isDark ? "#020617" : "#f9fafb",
+            text: isDark ? "#f9fafb" : "#0b1120",
+            subtext: isDark ? "#9ca3af" : "#6b7280",
+            border: isDark ? "#1f2937" : "#e5e7eb",
+            card: isDark ? "#030712" : "#ffffff",
+            accent: "#2563eb",
             gold: "#F59E0B",
         }),
         [isDark]
@@ -140,6 +170,8 @@ export default function HostProfileScreen() {
         totalArticulos: 0,
     });
     const [reviews, setReviews] = useState<HostReview[]>([]);
+    const [hostArticles, setHostArticles] = useState<HostArticle[]>([]);
+    const [showDetails, setShowDetails] = useState(false);
     const [loading, setLoading] = useState(true);
 
     const loadHost = useCallback(async () => {
@@ -161,7 +193,6 @@ export default function HostProfileScreen() {
                         "creado_en",
                         "actualizado_en",
                         "nombre",
-                        "curp",
                         "genero",
                         "estado_civil",
                         "numero_medico",
@@ -182,22 +213,50 @@ export default function HostProfileScreen() {
                 setHost(null);
                 setStats({ ratingAvg: 0, ratingCount: 0, totalArticulos: 0 });
                 setReviews([]);
+                setHostArticles([]);
                 return;
             }
 
             setHost(perfil);
 
-            // 2. Cuántos artículos tiene este anfitrión
-            const { data: articulos, error: artErr } = await supabase
+            // 2. Conteo de artículos del anfitrión
+            const {
+                data: articulosHead,
+                count: totalCount,
+                error: artErr,
+            } = await supabase
                 .from("articulos")
                 .select("id", { count: "exact", head: true })
                 .eq("id_propietario", id);
 
             if (artErr) throw artErr;
+            const totalArticulos = totalCount ?? 0;
 
-            const totalArticulos = (articulos as any)?.length ?? 0;
+            // 3. Lista de artículos (para carrusel)
+            const { data: articulosList, error: artListErr } = await supabase
+                .from("articulos")
+                .select(
+                    `
+          id,
+          titulo,
+          url_publica,
+          precio,
+          unidad_precio,
+          periodo_cantidad,
+          estado_articulo,
+          estado_publicacion
+        `
+                )
+                .eq("id_propietario", id)
+                .eq("estado_publicacion", "publicado")
+                .order("creado_en", { ascending: false })
+                .limit(10);
 
-            // 3. Reseñas donde este usuario es el DESTINO
+            if (artListErr) throw artListErr;
+
+            setHostArticles((articulosList ?? []) as HostArticle[]);
+
+            // 4. Reseñas donde este usuario es el DESTINO
             const { data: resenasRaw, error: rErr } = await supabase
                 .from("reseñas")
                 .select(
@@ -224,7 +283,7 @@ export default function HostProfileScreen() {
                 ? nums.reduce((a, b) => a + b, 0) / ratingCount
                 : 0;
 
-            // 4. Perfiles de quienes reseñan (id_autor)
+            // 5. Perfiles de quienes reseñan (id_autor)
             const reviewerIds = Array.from(
                 new Set(
                     (resenasRaw ?? [])
@@ -312,6 +371,11 @@ export default function HostProfileScreen() {
         return `Miembro desde ${year}`;
     }, [host?.creado_en]);
 
+    const membershipLabel = useMemo(
+        () => membershipLengthLabel(host?.creado_en ?? null),
+        [host?.creado_en]
+    );
+
     return (
         <View
             className="flex-1"
@@ -326,14 +390,10 @@ export default function HostProfileScreen() {
                     onPress={() => router.back()}
                     className="h-9 w-9 rounded-full items-center justify-center"
                     style={{
-                        backgroundColor: isDark ? "#18181b" : "#f4f4f5",
+                        backgroundColor: COLORS.pill,
                     }}
                 >
-                    <Feather
-                        name="arrow-left"
-                        size={22}
-                        color={COLORS.icon}
-                    />
+                    <Feather name="arrow-left" size={22} color={COLORS.icon} />
                 </Pressable>
 
                 <Text
@@ -385,12 +445,14 @@ export default function HostProfileScreen() {
                         <View
                             className="rounded-3xl px-5 py-5 flex-row items-center shadow-sm"
                             style={{
-                                backgroundColor: isDark ? "#3b0764" : "#fee2e2",
+                                backgroundColor: COLORS.card,
+                                borderWidth: 1,
+                                borderColor: COLORS.border,
                             }}
                         >
                             {/* Avatar */}
                             <View className="mr-4">
-                                <View className="h-24 w-24 rounded-full overflow-hidden border-2 border-white/80 bg-pink-100 dark:bg-pink-800">
+                                <View className="h-24 w-24 rounded-full overflow-hidden border-2 border-white/80 bg-neutral-200 dark:bg-neutral-800">
                                     {host.avatar_url ? (
                                         <Image
                                             source={{ uri: host.avatar_url }}
@@ -475,7 +537,10 @@ export default function HostProfileScreen() {
 
                             {/* Badge */}
                             <View className="ml-2 items-end self-start">
-                                <View className="h-10 w-10 rounded-full bg-rose-500 items-center justify-center">
+                                <View
+                                    className="h-10 w-10 rounded-full items-center justify-center"
+                                    style={{ backgroundColor: COLORS.accent }}
+                                >
                                     <Feather name="shield" size={22} color="#f9fafb" />
                                 </View>
                             </View>
@@ -506,15 +571,6 @@ export default function HostProfileScreen() {
                             style={{ backgroundColor: COLORS.border }}
                         />
                         <InfoRow
-                            icon="user"
-                            label="CURP"
-                            value={host.curp || "No especificado"}
-                        />
-                        <View
-                            className="h-px mx-4"
-                            style={{ backgroundColor: COLORS.border }}
-                        />
-                        <InfoRow
                             icon="heart"
                             label="Estado civil"
                             value={host.estado_civil || "No especificado"}
@@ -522,12 +578,150 @@ export default function HostProfileScreen() {
 
                         <View className="px-4 pt-2 pb-4">
                             <Button
-                                label="Ver más detalles"
+                                label={showDetails ? "Ocultar detalles" : "Ver más detalles"}
                                 variant="outline"
-                                onPress={() => { }}
+                                onPress={() => setShowDetails((prev) => !prev)}
                             />
                         </View>
                     </View>
+
+                    {/* Detalles extra: tiempo + carrusel de artículos */}
+                    {showDetails && (
+                        <View className="mt-4">
+                            <View
+                                className="rounded-2xl px-4 py-4"
+                                style={{
+                                    backgroundColor: isDark ? "#020617" : "#eef2ff",
+                                    borderWidth: 1,
+                                    borderColor: COLORS.border,
+                                }}
+                            >
+                                <Text
+                                    className="text-base font-semibold mb-1"
+                                    style={{ color: COLORS.text }}
+                                >
+                                    Actividad en la plataforma
+                                </Text>
+                                <Text
+                                    className="text-sm mb-2"
+                                    style={{ color: COLORS.subtext }}
+                                >
+                                    {membershipLabel}
+                                </Text>
+                                <Text
+                                    className="text-sm"
+                                    style={{ color: COLORS.subtext }}
+                                >
+                                    Artículos publicados:{" "}
+                                    <Text style={{ fontWeight: "600", color: COLORS.text }}>
+                                        {stats.totalArticulos}
+                                    </Text>
+                                </Text>
+
+                                <View className="mt-4">
+                                    <Text
+                                        className="text-sm font-semibold mb-2"
+                                        style={{ color: COLORS.text }}
+                                    >
+                                        Artículos de este anfitrión
+                                    </Text>
+
+                                    {hostArticles.length === 0 ? (
+                                        <Text
+                                            className="text-xs"
+                                            style={{ color: COLORS.subtext }}
+                                        >
+                                            Este anfitrión aún no tiene artículos publicados o activos.
+                                        </Text>
+                                    ) : (
+                                        <ScrollView
+                                            horizontal
+                                            showsHorizontalScrollIndicator={false}
+                                        >
+                                            {hostArticles.map((art) => {
+                                                const precioLabel =
+                                                    typeof art.precio === "number"
+                                                        ? new Intl.NumberFormat("es-MX", {
+                                                            style: "currency",
+                                                            currency: "MXN",
+                                                        }).format(art.precio)
+                                                        : "";
+
+                                                const unidadLabel = (() => {
+                                                    if (!art.unidad_precio) return "";
+                                                    const qty = Math.max(1, art.periodo_cantidad ?? 1);
+                                                    const base =
+                                                        art.unidad_precio === "hora"
+                                                            ? qty === 1
+                                                                ? "hora"
+                                                                : "horas"
+                                                            : art.unidad_precio === "dia"
+                                                                ? qty === 1
+                                                                    ? "día"
+                                                                    : "días"
+                                                                : qty === 1
+                                                                    ? "semana"
+                                                                    : "semanas";
+                                                    return `${qty} ${base}`;
+                                                })();
+
+                                                return (
+                                                    <View
+                                                        key={art.id}
+                                                        className="mr-3 rounded-2xl overflow-hidden"
+                                                        style={{
+                                                            width: 160,
+                                                            backgroundColor: COLORS.card,
+                                                            borderWidth: 1,
+                                                            borderColor: COLORS.border,
+                                                        }}
+                                                    >
+                                                        <Image
+                                                            source={{
+                                                                uri:
+                                                                    art.url_publica ||
+                                                                    `https://picsum.photos/seed/host-${art.id}/300/200`,
+                                                            }}
+                                                            className="w-full h-24"
+                                                            resizeMode="cover"
+                                                        />
+                                                        <View className="px-3 py-2">
+                                                            <Text
+                                                                className="text-xs font-semibold mb-1"
+                                                                style={{ color: COLORS.text }}
+                                                                numberOfLines={2}
+                                                            >
+                                                                {art.titulo || "Artículo sin título"}
+                                                            </Text>
+                                                            {precioLabel ? (
+                                                                <Text
+                                                                    className="text-[11px]"
+                                                                    style={{ color: COLORS.subtext }}
+                                                                    numberOfLines={1}
+                                                                >
+                                                                    {precioLabel}
+                                                                    {unidadLabel ? ` · ${unidadLabel}` : ""}
+                                                                </Text>
+                                                            ) : null}
+                                                            {art.estado_articulo ? (
+                                                                <Text
+                                                                    className="text-[10px] mt-1"
+                                                                    style={{ color: COLORS.subtext }}
+                                                                    numberOfLines={1}
+                                                                >
+                                                                    Estado: {art.estado_articulo}
+                                                                </Text>
+                                                            ) : null}
+                                                        </View>
+                                                    </View>
+                                                );
+                                            })}
+                                        </ScrollView>
+                                    )}
+                                </View>
+                            </View>
+                        </View>
+                    )}
 
                     {/* Descripción */}
                     <View className="mt-6">
